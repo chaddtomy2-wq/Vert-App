@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VERT — Lifetime Ski Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛷</text></svg>">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { margin: 0; background: #0f1729; }
+    #loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'DM Sans', sans-serif; color: rgba(255,255,255,0.5); z-index: 9999; }
+    #loading .title { font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #e0eafc, #8ec5fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    #loading .dots { animation: pulse 1.5s ease-in-out infinite; }
+  </style>
+  <script>const origWarn=console.warn;console.warn=function(...a){if(a[0]&&typeof a[0]==='string'&&a[0].includes('in-browser Babel'))return;origWarn.apply(console,a)};</script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"><div id="loading"><div class="title">⛷ VERT</div><div class="dots">Loading...</div></div></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+const PRELOADED_SESSIONS = [
+  {
+    id: "s1",
+    date: "2022-11-21",
+    resort: "Breckenridge Resort",
+    runs: 15,
+    vertical: 5314,
+    distance: 36.6,
+    topSpeed: 77.6,
+    totalTime: "4h 51min",
+    tallestRun: 487,
+    longestRun: 3.7,
+    peakAlt: 3448,
+  },
+  {
+    id: "s2",
+    date: "2022-11-22",
+    resort: "Breckenridge Resort",
+    runs: 12,
+    vertical: 5132,
+    distance: 32.2,
+    topSpeed: 68.1,
+    totalTime: "4h 14min",
+    tallestRun: 528,
+    longestRun: 4.8,
+    peakAlt: 3446,
+  },
+  {
+    id: "s3",
+    date: "2022-11-23",
+    resort: "Breckenridge Resort",
+    runs: 9,
+    vertical: 3515,
+    distance: 18.9,
+    topSpeed: 70.0,
+    totalTime: "3h 38min",
+    tallestRun: 406,
+    longestRun: 2.5,
+    peakAlt: 3440,
+  },
+  {
+    id: "s4",
+    date: "2025-01-30",
+    resort: "Big White Ski Resort",
+    runs: 11,
+    vertical: 4723,
+    distance: 24.5,
+    topSpeed: 55.2,
+    totalTime: "3h 23min",
+    tallestRun: 705,
+    longestRun: 3.8,
+    peakAlt: 2263,
+  },
+  {
+    id: "s5",
+    date: "2025-02-02",
+    resort: "Big White Ski Resort",
+    runs: 9,
+    vertical: 3536,
+    distance: 19.3,
+    topSpeed: 60.8,
+    totalTime: "3h 25min",
+    tallestRun: 647,
+    longestRun: 3.8,
+    peakAlt: 2218,
+  },
+  {
+    id: "s6",
+    date: "2025-02-04",
+    resort: "Revelstoke Mountain Resort",
+    runs: 9,
+    vertical: 5406,
+    distance: 26.6,
+    topSpeed: 54.8,
+    totalTime: "4h 54min",
+    tallestRun: 1435,
+    longestRun: 6.2,
+    peakAlt: 2228,
+  },
+  {
+    id: "s7",
+    date: "2025-02-06",
+    resort: "Revelstoke Mountain Resort",
+    runs: 2,
+    vertical: 695,
+    distance: 4.0,
+    topSpeed: 51.8,
+    totalTime: "1h 2min",
+    tallestRun: 592,
+    longestRun: 3.4,
+    peakAlt: 2224,
+  },
+  {
+    id: "s8",
+    date: "2026-01-13",
+    resort: "Revelstoke Mountain Resort",
+    runs: 12,
+    vertical: 5174,
+    distance: 28.6,
+    topSpeed: 61.1,
+    totalTime: "5h 6min",
+    tallestRun: 1441,
+    longestRun: 6.1,
+    peakAlt: 2227,
+  },
+  {
+    id: "s9",
+    date: "2026-01-14",
+    resort: "Revelstoke Mountain Resort",
+    runs: 10,
+    vertical: 5157,
+    distance: 28.7,
+    topSpeed: 56.5,
+    totalTime: "4h 33min",
+    tallestRun: 931,
+    longestRun: 5.4,
+    peakAlt: 2224,
+  },
+];
+
+const RESORT_COORDS = {
+  "Breckenridge Resort": { lat: 39.4817, lng: -106.0384, location: "Colorado, USA" },
+  "Big White Ski Resort": { lat: 49.7256, lng: -118.9314, location: "British Columbia, Canada" },
+  "Revelstoke Mountain Resort": { lat: 50.9577, lng: -118.1649, location: "British Columbia, Canada" },
+  "Mont Ste. Marie": { lat: 46.2553, lng: -75.9531, location: "Quebec, Canada" },
+  "Mont Ste Marie": { lat: 46.2553, lng: -75.9531, location: "Quebec, Canada" },
+};
+
+
+function getSeason(dateStr) {
+  const d = new Date(dateStr);
+  const month = d.getMonth();
+  const year = d.getFullYear();
+  if (month >= 10) return `${year}/${year + 1}`;
+  if (month <= 3) return `${year - 1}/${year}`;
+  return `${year}/${year + 1}`;
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function generateId() {
+  return "s" + Date.now() + Math.random().toString(36).slice(2, 6);
+}
+
+// ── Stat Card ──
+function StatCard({ label, value, unit, icon, accent }) {
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.06)",
+      backdropFilter: "blur(20px)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 16,
+      padding: "24px 20px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 6,
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        position: "absolute",
+        top: -20,
+        right: -10,
+        fontSize: 64,
+        opacity: 0.06,
+        lineHeight: 1,
+      }}>{icon}</div>
+      <span style={{
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: "0.1em",
+        textTransform: "uppercase",
+        color: accent || "#8ec5fc",
+        fontFamily: "'DM Sans', sans-serif",
+      }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+        <span style={{
+          fontSize: 32,
+          fontWeight: 700,
+          color: "#fff",
+          fontFamily: "'Space Mono', monospace",
+          letterSpacing: "-0.02em",
+        }}>{value}</span>
+        {unit && <span style={{
+          fontSize: 13,
+          color: "rgba(255,255,255,0.45)",
+          fontWeight: 500,
+          fontFamily: "'DM Sans', sans-serif",
+        }}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Session Row (desktop) / Card (mobile) ──
+function SessionRow({ session, index, onEdit, onDelete }) {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
+  const btnStyle = { background: "none", border: "none", cursor: "pointer", padding: 4, fontSize: 14, opacity: 0.4 };
+
+  if (isMobile) {
+    return (
+      <div style={{
+        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: 12, padding: "14px 16px", marginBottom: 8,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>{session.resort}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono', monospace" }}>{formatDate(session.date)}</span>
+            <button onClick={() => onEdit(session)} style={btnStyle} title="Edit">✏️</button>
+            <button onClick={() => onDelete(session)} style={btnStyle} title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          {[
+            ["Runs", session.runs],
+            ["Vert", `${session.vertical.toLocaleString()}m`],
+            ["Dist", `${session.distance}km`],
+            ["Speed", session.topSpeed ? `${session.topSpeed}km/h` : "—"],
+          ].map(([label, val]) => (
+            <div key={label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+              <div style={{ fontSize: 13, color: "#fff", fontWeight: 500, fontFamily: "'Space Mono', monospace" }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "1fr 1.4fr repeat(4, 1fr) auto",
+      alignItems: "center", padding: "14px 16px",
+      background: index % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent",
+      borderRadius: 8, fontSize: 13, color: "rgba(255,255,255,0.75)",
+      fontFamily: "'DM Sans', sans-serif", gap: 8,
+    }}>
+      <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{formatDate(session.date)}</span>
+      <span style={{ color: "#fff", fontWeight: 500 }}>{session.resort}</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.runs}</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.vertical.toLocaleString()}m</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.distance}km</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.topSpeed ? `${session.topSpeed}km/h` : "—"}</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button onClick={() => onEdit(session)} style={btnStyle} title="Edit">✏️</button>
+        <button onClick={() => onDelete(session)} style={btnStyle} title="Delete">🗑️</button>
+      </div>
+    </div>
+  );
+}
+
+function SessionsHeader() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  if (isMobile) return null;
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "1fr 1.4fr repeat(4, 1fr) auto",
+      padding: "8px 16px 12px", fontSize: 10, textTransform: "uppercase",
+      letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)", fontWeight: 600, gap: 8,
+    }}>
+      <span>Date</span><span>Resort</span>
+      <span style={{ textAlign: "center" }}>Runs</span>
+      <span style={{ textAlign: "center" }}>Vertical</span>
+      <span style={{ textAlign: "center" }}>Distance</span>
+      <span style={{ textAlign: "center" }}>Top Speed</span>
+      <span></span>
+    </div>
+  );
+}
+
+// ── Edit Session Modal ──
+function EditModal({ session, onClose, onSave }) {
+  const [date, setDate] = useState(session.date || "");
+  const [resort, setResort] = useState(session.resort || "");
+  const [runs, setRuns] = useState(String(session.runs || ""));
+  const [vertical, setVertical] = useState(String(session.vertical || ""));
+  const [distance, setDistance] = useState(String(session.distance || ""));
+  const [topSpeed, setTopSpeed] = useState(String(session.topSpeed || ""));
+  const [totalTime, setTotalTime] = useState(session.totalTime || "");
+  const [tallestRun, setTallestRun] = useState(String(session.tallestRun || ""));
+  const [longestRun, setLongestRun] = useState(String(session.longestRun || ""));
+  const [peakAlt, setPeakAlt] = useState(String(session.peakAlt || ""));
+  const [error, setError] = useState(null);
+
+  const save = () => {
+    if (!date || !resort || !runs || !vertical) { setError("Date, resort, runs, and vertical are required."); return; }
+    const updated = {
+      ...session, date, resort,
+      runs: parseInt(runs) || 0, vertical: parseInt(vertical) || 0,
+      distance: parseFloat(distance) || 0, topSpeed: parseFloat(topSpeed) || null,
+      totalTime: totalTime || null, tallestRun: parseInt(tallestRun) || null,
+      longestRun: parseFloat(longestRun) || null, peakAlt: parseInt(peakAlt) || null,
+    };
+    if (updated.topSpeed && updated.topSpeed > 100) updated.topSpeed = null;
+    onSave(updated);
+    onClose();
+  };
+
+  const inp = { width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 14, fontFamily: "'Space Mono', monospace", outline: "none" };
+  const lbl = { fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(10px)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#1a1f2e", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20, padding: "24px 20px", maxWidth: 440, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Edit Session</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginBottom: 16 }}>
+          <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Date *</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inp} /></div>
+          <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Resort *</label><input type="text" value={resort} onChange={(e) => setResort(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Runs *</label><input type="number" value={runs} onChange={(e) => setRuns(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Vertical (m) *</label><input type="number" value={vertical} onChange={(e) => setVertical(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Distance (km)</label><input type="number" step="0.1" value={distance} onChange={(e) => setDistance(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Top Speed (km/h)</label><input type="number" step="0.1" value={topSpeed} onChange={(e) => setTopSpeed(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Total Time</label><input type="text" value={totalTime} onChange={(e) => setTotalTime(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Peak Alt (m)</label><input type="number" value={peakAlt} onChange={(e) => setPeakAlt(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Tallest Run (m)</label><input type="number" value={tallestRun} onChange={(e) => setTallestRun(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Longest Run (km)</label><input type="number" step="0.1" value={longestRun} onChange={(e) => setLongestRun(e.target.value)} style={inp} /></div>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, color: "#ef4444", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{error}</div>
+        )}
+
+        <button onClick={save} style={{
+          width: "100%", padding: "14px", background: "linear-gradient(135deg, #34d399, #10b981)",
+          border: "none", borderRadius: 12, color: "#fff", fontSize: 15,
+          fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+        }}>Save Changes</button>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Upload Modal ──
+function UploadModal({ onClose, onSessionAdded, sessions }) {
+  const [images, setImages] = useState([]); // [{src, file}]
+  const [results, setResults] = useState([]); // [{status, data, error, src}]
+  const [processing, setProcessing] = useState(false);
+  const [currentIdx, setCurrentIdx] = useState(-1);
+  const [done, setDone] = useState(false);
+  const [editingIdx, setEditingIdx] = useState(-1);
+  const fileRef = useRef();
+
+  const handleFiles = (fileList) => {
+    const files = Array.from(fileList).filter(f => f.type.startsWith("image/")).slice(0, 50);
+    if (!files.length) return;
+    const newImages = [];
+    let loaded = 0;
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        newImages.push({ src: reader.result, name: file.name });
+        loaded++;
+        if (loaded === files.length) {
+          setImages(prev => [...prev, ...newImages]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        handleFiles([item.getAsFile()]);
+        return;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [handlePaste]);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
+  };
+
+  const removeImage = (idx) => {
+    setImages(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const parseSlopes = (text) => {
+    const lines = text.replace(/\r/g, "").split("\n").map(s => s.trim()).filter(Boolean);
+    const full = lines.join(" ");
+    console.log("OCR text:", full);
+
+    let date = null;
+    const dateMatch = full.match(/([A-Z][a-z]{2})\s+(\d{1,2}),?\s*(20\d{2})/i);
+    if (dateMatch) {
+      const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+      const m = months[dateMatch[1].toLowerCase()];
+      const d = dateMatch[2].padStart(2, "0");
+      if (m) date = `${dateMatch[3]}-${m}-${d}`;
+    }
+
+    let resort = null;
+    const resortMatch = full.match(/(?:20\d{2})\s+([A-Z][A-Za-z\s.']+?)(?:\s+Tracked|\s+tracked)/i);
+    if (resortMatch) resort = resortMatch[1].trim();
+    if (!resort) {
+      const r2 = full.match(/(Mont\s+Ste\.?\s*Marie|Breckenridge|Big\s+White|Revelstoke|Whistler|Tremblant|Blue\s+Mountain|Bromont|Stoneham|Le\s+Massif|Banff|Lake\s+Louise|Fernie|Kicking\s+Horse|Sun\s+Peaks|Silver\s+Star|Apex|Marmot|Panorama|Red\s+Mountain|Whitewater|Grouse|Cypress|Seymour)/i);
+      if (r2) resort = r2[1];
+    }
+
+    let runs = null;
+    const runsMatch = full.match(/(\d{1,3})\s*(?:RUNS|runs|Runs)/);
+    if (runsMatch) runs = parseInt(runsMatch[1]);
+
+    let vertical = null;
+    const vertMatch = full.match(/([\d,]+)\s*[Mm]\s*[↓⬇]?\s*(?:vertical|vert)/i) ||
+                      full.match(/(?:vertical|vert)\s*[↓⬇]?\s*([\d,]+)\s*[Mm]/i) ||
+                      full.match(/([\d,]+)\s*[Mm]\b(?!.*(?:peak|alt|tall))/i);
+    if (vertMatch) vertical = parseInt(vertMatch[1].replace(/,/g, ""));
+    if (!vertical) {
+      const allM = [...full.matchAll(/([\d,]+)\s*[Mm]\b/g)];
+      for (const m of allM) {
+        const v = parseInt(m[1].replace(/,/g, ""));
+        if (v > 100 && v < 20000) { vertical = v; break; }
+      }
+    }
+
+    let distance = null;
+    const distMatch = full.match(/([\d.]+)\s*[Kk][Mm]\s*[→⟶]?\s*(?:distance|dist)/i) ||
+                      full.match(/(?:distance|dist)\s*[→⟶]?\s*([\d.]+)\s*[Kk][Mm]/i);
+    if (distMatch) distance = parseFloat(distMatch[1]);
+    if (!distance) {
+      const allKm = [...full.matchAll(/([\d.]+)\s*[Kk][Mm]\b/g)];
+      for (const m of allKm) {
+        const v = parseFloat(m[1]);
+        if (v > 1 && v < 200) { distance = v; break; }
+      }
+    }
+
+    let topSpeed = null;
+    const speedMatch = full.match(/([\d.]+)\s*[Kk][Mm]\/[Hh]/);
+    if (speedMatch) topSpeed = parseFloat(speedMatch[1]);
+    if (!topSpeed) {
+      const s2 = full.match(/([\d.]+)\s*(?:top\s*speed)/i);
+      if (s2) topSpeed = parseFloat(s2[1]);
+    }
+
+    let totalTime = null;
+    const timeMatch = full.match(/(\d{1,2})\s*[Hh]\s*(\d{1,2})\s*[Mm][Ii][Nn]/);
+    if (timeMatch) totalTime = `${timeMatch[1]}h ${timeMatch[2]}min`;
+
+    let tallestRun = null;
+    const tallMatch = full.match(/([\d,]+)\s*[Mm]\s*[↓⬇]?\s*(?:tallest|tall)/i) ||
+                      full.match(/(?:tallest|tall)\s*(?:run)?\s*[↓⬇]?\s*([\d,]+)\s*[Mm]?/i);
+    if (tallMatch) tallestRun = parseInt(tallMatch[1].replace(/,/g, ""));
+
+    let longestRun = null;
+    const longMatch = full.match(/([\d.]+)\s*[Kk][Mm]\s*[→⟶]?\s*(?:longest|long)/i) ||
+                      full.match(/(?:longest|long)\s*(?:run)?\s*[→⟶]?\s*([\d.]+)\s*[Kk][Mm]?/i);
+    if (longMatch) longestRun = parseFloat(longMatch[1]);
+
+    let peakAlt = null;
+    const peakMatch = full.match(/([\d,]+)\s*[Mm]\s*[↑⬆▲]?\s*(?:peak|alt)/i) ||
+                      full.match(/(?:peak\s*alt)\s*[↑⬆▲]?\s*([\d,]+)\s*[Mm]?/i);
+    if (peakMatch) peakAlt = parseInt(peakMatch[1].replace(/,/g, ""));
+
+    return { date, resort, runs, vertical, distance, topSpeed, totalTime, tallestRun, longestRun, peakAlt };
+  };
+
+  const loadTesseract = async () => {
+    if (!window.Tesseract) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Failed to load OCR engine"));
+        document.head.appendChild(s);
+      });
+    }
+  };
+
+  const extractAll = async () => {
+    setProcessing(true);
+    setResults([]);
+    try {
+      await loadTesseract();
+    } catch (err) {
+      setResults([{ status: "error", error: "Failed to load OCR engine" }]);
+      setProcessing(false);
+      return;
+    }
+
+    const newResults = [];
+    for (let i = 0; i < images.length; i++) {
+      setCurrentIdx(i);
+      try {
+        const { data: { text } } = await window.Tesseract.recognize(images[i].src, "eng");
+        const parsed = parseSlopes(text);
+        if (!parsed.runs && !parsed.vertical) {
+          newResults.push({ status: "error", error: "Could not read stats", src: images[i].src });
+        } else {
+          const isDupe = sessions.some(s => s.date === parsed.date && s.resort === parsed.resort);
+          newResults.push({ status: isDupe ? "duplicate" : "success", data: parsed, src: images[i].src });
+        }
+      } catch (err) {
+        newResults.push({ status: "error", error: "OCR failed", src: images[i].src });
+      }
+      setResults([...newResults]);
+    }
+    setCurrentIdx(-1);
+    setProcessing(false);
+    setDone(true);
+  };
+
+  const saveAll = () => {
+    let saved = 0;
+    results.forEach(r => {
+      if (r.status === "success" && r.data.date && r.data.resort) {
+        const session = { ...r.data, id: generateId() };
+        if (session.topSpeed && session.topSpeed > 100) session.topSpeed = null;
+        onSessionAdded(session);
+        saved++;
+      }
+    });
+    onClose();
+  };
+
+  const successCount = results.filter(r => r.status === "success").length;
+  const dupeCount = results.filter(r => r.status === "duplicate").length;
+  const errorCount = results.filter(r => r.status === "error").length;
+
+  const updateResultField = (idx, field, value) => {
+    setResults(prev => {
+      const updated = [...prev];
+      if (updated[idx] && updated[idx].data) {
+        updated[idx] = { ...updated[idx], data: { ...updated[idx].data, [field]: value } };
+      }
+      return updated;
+    });
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(10px)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#1a1f2e", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20, padding: "24px", maxWidth: 560, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }} onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Add Sessions</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        {/* Upload area (show when not processing and not done) */}
+        {!processing && !done && (
+          <div>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              style={{
+                border: "2px dashed rgba(142,197,252,0.3)", borderRadius: 16,
+                padding: images.length ? "24px" : "48px 24px", textAlign: "center", cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
+              <p style={{ color: "#8ec5fc", fontSize: 15, fontWeight: 600, margin: "0 0 6px", fontFamily: "'DM Sans', sans-serif" }}>
+                Paste, drop, or tap to upload
+              </p>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
+                Select up to 50 Slopes screenshots at once
+              </p>
+              <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handleFiles(e.target.files)} />
+            </div>
+
+            {/* Image thumbnails */}
+            {images.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>
+                  {images.length} screenshot{images.length !== 1 ? "s" : ""} ready
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {images.map((img, i) => (
+                    <div key={i} style={{ position: "relative", width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                      <img src={img.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <button onClick={(e) => { e.stopPropagation(); removeImage(i); }} style={{
+                        position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.7)",
+                        border: "none", color: "#fff", width: 18, height: 18, borderRadius: 4,
+                        cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={extractAll} style={{
+                  width: "100%", padding: "14px", marginTop: 16,
+                  background: "linear-gradient(135deg, #8ec5fc, #667eea)",
+                  border: "none", borderRadius: 12, color: "#fff", fontSize: 15,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                }}>Extract Stats from {images.length} Screenshot{images.length !== 1 ? "s" : ""}</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Processing */}
+        {processing && (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ width: 28, height: 28, border: "3px solid rgba(142,197,252,0.2)", borderTopColor: "#8ec5fc", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+            <p style={{ color: "#8ec5fc", fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", margin: "0 0 8px" }}>
+              Reading screenshot {currentIdx + 1} of {images.length}...
+            </p>
+            <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 8, height: 6, overflow: "hidden", margin: "0 20px" }}>
+              <div style={{
+                background: "linear-gradient(90deg, #8ec5fc, #667eea)",
+                height: "100%", borderRadius: 8,
+                width: `${((currentIdx + 1) / images.length) * 100}%`,
+                transition: "width 0.3s",
+              }} />
+            </div>
+            {results.length > 0 && (
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", marginTop: 12 }}>
+                {results.filter(r => r.status === "success").length} extracted so far
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Results */}
+        {done && (
+          <div>
+            {/* Summary */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              {successCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#34d399", fontFamily: "'Space Mono', monospace" }}>{successCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(52,211,153,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Ready to save</div>
+                </div>
+              )}
+              {dupeCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#fbbf24", fontFamily: "'Space Mono', monospace" }}>{dupeCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(251,191,36,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Duplicates</div>
+                </div>
+              )}
+              {errorCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#ef4444", fontFamily: "'Space Mono', monospace" }}>{errorCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(239,68,68,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Failed</div>
+                </div>
+              )}
+            </div>
+
+            {/* Result list */}
+            <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+              {results.map((r, i) => (
+                <div key={i} style={{
+                  padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8,
+                  border: `1px solid ${r.status === "success" ? "rgba(52,211,153,0.15)" : r.status === "duplicate" ? "rgba(251,191,36,0.15)" : "rgba(239,68,68,0.15)"}`,
+                }}>
+                  {editingIdx === i && r.data ? (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", marginBottom: 8 }}>
+                        {[
+                          ["date", "Date", r.data.date, "date"],
+                          ["resort", "Resort", r.data.resort, "text"],
+                          ["runs", "Runs", r.data.runs, "number"],
+                          ["vertical", "Vertical (m)", r.data.vertical, "number"],
+                          ["distance", "Dist (km)", r.data.distance, "number"],
+                          ["topSpeed", "Speed (km/h)", r.data.topSpeed, "number"],
+                          ["totalTime", "Time", r.data.totalTime, "text"],
+                          ["peakAlt", "Peak Alt (m)", r.data.peakAlt, "number"],
+                        ].map(([key, label, val, type]) => (
+                          <div key={key}>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                            <input type={type} value={val ?? ""} step={type === "number" ? "0.1" : undefined}
+                              onChange={(e) => {
+                                let v = e.target.value;
+                                if (type === "number") v = v === "" ? null : parseFloat(v);
+                                updateResultField(i, key, v);
+                              }}
+                              style={{ width: "100%", padding: "6px 8px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, color: "#fff", fontSize: 12, fontFamily: "'Space Mono', monospace", outline: "none" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setEditingIdx(-1)} style={{
+                        padding: "6px 16px", background: "rgba(142,197,252,0.15)", border: "1px solid rgba(142,197,252,0.3)",
+                        borderRadius: 6, color: "#8ec5fc", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                      }}>Done Editing</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <img src={r.src} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {(r.status === "success" || r.status === "duplicate") && r.data && (
+                          <div>
+                            <div style={{ fontSize: 13, color: r.status === "duplicate" ? "#fbbf24" : "#fff", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>
+                              {r.status === "duplicate" ? "Duplicate — " : ""}{r.data.resort || "Unknown"} — {r.data.date ? formatDate(r.data.date) : "No date"}
+                            </div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono', monospace" }}>
+                              {r.data.runs} runs · {r.data.vertical?.toLocaleString()}m · {r.data.distance}km
+                            </div>
+                          </div>
+                        )}
+                        {r.status === "error" && (
+                          <div style={{ fontSize: 13, color: "#ef4444", fontFamily: "'DM Sans', sans-serif" }}>{r.error}</div>
+                        )}
+                      </div>
+                      {r.data && (
+                        <button onClick={() => setEditingIdx(i)} style={{
+                          background: "none", border: "none", cursor: "pointer", fontSize: 14, opacity: 0.5, padding: 4,
+                        }} title="Edit">✏️</button>
+                      )}
+                      <div style={{ fontSize: 16 }}>
+                        {r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : "❌"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setImages([]); setResults([]); setDone(false); }} style={{
+                flex: 1, padding: "12px", background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10,
+                color: "rgba(255,255,255,0.7)", fontSize: 14, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              }}>Start Over</button>
+              {successCount > 0 && (
+                <button onClick={saveAll} style={{
+                  flex: 2, padding: "12px", background: "linear-gradient(135deg, #34d399, #10b981)",
+                  border: "none", borderRadius: 10, color: "#fff", fontSize: 14,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                }}>Save {successCount} Session{successCount !== 1 ? "s" : ""} ✓</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Personal Records ──
+function PersonalRecords({ sessions }) {
+  if (!sessions.length) return null;
+  const records = [
+    {
+      label: "Top Speed",
+      value: Math.max(...sessions.map((s) => s.topSpeed || 0)).toFixed(1),
+      unit: "km/h",
+      session: sessions.reduce((a, b) => ((a.topSpeed || 0) > (b.topSpeed || 0) ? a : b)),
+      icon: "⚡",
+    },
+    {
+      label: "Most Vertical (Day)",
+      value: Math.max(...sessions.map((s) => s.vertical)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => (a.vertical > b.vertical ? a : b)),
+      icon: "⬇",
+    },
+    {
+      label: "Most Runs (Day)",
+      value: Math.max(...sessions.map((s) => s.runs)),
+      unit: "runs",
+      session: sessions.reduce((a, b) => (a.runs > b.runs ? a : b)),
+      icon: "🔄",
+    },
+    {
+      label: "Longest Run",
+      value: Math.max(...sessions.map((s) => s.longestRun || 0)).toFixed(1),
+      unit: "km",
+      session: sessions.reduce((a, b) => ((a.longestRun || 0) > (b.longestRun || 0) ? a : b)),
+      icon: "📏",
+    },
+    {
+      label: "Tallest Run",
+      value: Math.max(...sessions.map((s) => s.tallestRun || 0)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => ((a.tallestRun || 0) > (b.tallestRun || 0) ? a : b)),
+      icon: "🏔",
+    },
+    {
+      label: "Highest Altitude",
+      value: Math.max(...sessions.map((s) => s.peakAlt || 0)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => ((a.peakAlt || 0) > (b.peakAlt || 0) ? a : b)),
+      icon: "🗻",
+    },
+  ];
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span style={{ color: "#fbbf24" }}>🏆</span> Personal Records
+      </h3>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+        {records.map((r) => (
+          <div key={r.label} style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 12,
+            padding: "14px 16px",
+          }}>
+            <div style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "#fbbf24",
+              fontWeight: 600,
+              marginBottom: 6,
+              fontFamily: "'DM Sans', sans-serif",
+            }}>{r.icon} {r.label}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <span style={{ fontSize: 22, fontWeight: 700, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{r.value}</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif" }}>{r.unit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
+              {r.session.resort} — {formatDate(r.session.date)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Season Summary ──
+function SeasonSummary({ sessions }) {
+  const seasons = {};
+  sessions.forEach((s) => {
+    const season = getSeason(s.date);
+    if (!seasons[season]) seasons[season] = [];
+    seasons[season].push(s);
+  });
+
+  const sortedSeasons = Object.keys(seasons).sort().reverse();
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span>📅</span> Seasons
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sortedSeasons.map((season) => {
+          const ss = seasons[season];
+          const totalVert = ss.reduce((a, s) => a + s.vertical, 0);
+          const totalDist = ss.reduce((a, s) => a + s.distance, 0);
+          const totalRuns = ss.reduce((a, s) => a + s.runs, 0);
+          const resorts = [...new Set(ss.map((s) => s.resort))];
+          return (
+            <div key={season} style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+              }}>
+                <span style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#8ec5fc",
+                  fontFamily: "'Space Mono', monospace",
+                }}>{season}</span>
+                <span style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.4)",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{ss.length} day{ss.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Vertical</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalVert.toLocaleString()}m</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Distance</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalDist.toFixed(1)}km</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Runs</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalRuns}</div>
+                </div>
+              </div>
+              <div style={{
+                marginTop: 10,
+                fontSize: 11,
+                color: "rgba(255,255,255,0.35)",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+                {resorts.join(" · ")}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Resort Breakdown ──
+function ResortBreakdown({ sessions }) {
+  const resorts = {};
+  sessions.forEach((s) => {
+    if (!resorts[s.resort]) resorts[s.resort] = [];
+    resorts[s.resort].push(s);
+  });
+
+  const sorted = Object.entries(resorts).sort((a, b) =>
+    b[1].reduce((t, s) => t + s.vertical, 0) - a[1].reduce((t, s) => t + s.vertical, 0)
+  );
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span>⛷</span> Resorts
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map(([resort, ss]) => {
+          const totalVert = ss.reduce((a, s) => a + s.vertical, 0);
+          const totalDist = ss.reduce((a, s) => a + s.distance, 0);
+          const totalRuns = ss.reduce((a, s) => a + s.runs, 0);
+          const bestSpeed = Math.max(...ss.map((s) => s.topSpeed || 0));
+          return (
+            <div key={resort} style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+              }}>
+                <span style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#fff",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{resort}</span>
+                <span style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.4)",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{ss.length} day{ss.length !== 1 ? "s" : ""}</span>
+              </div>
+              {RESORT_COORDS[resort]?.location && (
+                <div style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.35)",
+                  fontFamily: "'DM Sans', sans-serif",
+                  marginBottom: 10,
+                  marginTop: -6,
+                }}>{RESORT_COORDS[resort].location}</div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {[
+                  ["Vertical", `${totalVert.toLocaleString()}m`],
+                  ["Distance", `${totalDist.toFixed(1)}km`],
+                  ["Runs", totalRuns],
+                  ["Top Speed", `${bestSpeed.toFixed(1)}km/h`],
+                ].map(([label, val]) => (
+                  <div key={label}>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Interactive Resort Map (Leaflet) ──
+function ResortMap({ sessions }) {
+  const mapRef = useRef(null);
+  const leafletRef = useRef(null);
+  const resorts = {};
+  sessions.forEach((s) => {
+    const key = s.resort;
+    if (!resorts[key]) resorts[key] = { name: key, days: 0, vertical: 0 };
+    resorts[key].days++;
+    resorts[key].vertical += s.vertical;
+  });
+  const resortList = Object.values(resorts).filter((r) => RESORT_COORDS[r.name]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
+
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link");
+      link.id = "leaflet-css";
+      link.rel = "stylesheet";
+      link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(link);
+    }
+
+    const loadLeaflet = () => {
+      if (window.L) return initMap();
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+      s.onload = initMap;
+      document.head.appendChild(s);
+    };
+
+    const initMap = () => {
+      if (!mapRef.current) return;
+      const L = window.L;
+      const map = L.map(mapRef.current, { zoomControl: false }).setView([45, -105], 4);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap', maxZoom: 19
+      }).addTo(map);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      leafletRef.current = map;
+
+      // Red Google Maps-style pin
+      const pinIcon = L.divIcon({
+        className: "",
+        html: '<svg width="30" height="40" viewBox="0 0 30 40" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))"><path d="M15,38 C15,38 3,22 3,13 C3,6.4 8.4,1 15,1 C21.6,1 27,6.4 27,13 C27,22 15,38 15,38 Z" fill="#ea4335" stroke="#b31412" stroke-width="1"/><circle cx="15" cy="13" r="5" fill="white"/></svg>',
+        iconSize: [30, 40],
+        iconAnchor: [15, 40],
+        popupAnchor: [0, -40],
+      });
+
+      resortList.forEach((r) => {
+        const c = RESORT_COORDS[r.name];
+        const shortName = r.name.replace(" Ski Resort", "").replace(" Mountain Resort", "").replace(" Resort", "");
+        const marker = L.marker([c.lat, c.lng], { icon: pinIcon }).addTo(map);
+        marker.bindPopup(
+          '<div style="font-family:DM Sans,sans-serif;min-width:140px">' +
+          '<div style="font-weight:700;font-size:14px;margin-bottom:2px">' + shortName + '</div>' +
+          '<div style="font-size:12px;color:#888;margin-bottom:6px">' + c.location + '</div>' +
+          '<div style="font-size:12px">' + r.days + ' day' + (r.days !== 1 ? 's' : '') + ' · ' + r.vertical.toLocaleString() + 'm vert</div>' +
+          '</div>'
+        );
+        marker.bindTooltip(shortName, {
+          permanent: true, direction: "top", offset: [0, -42], className: "resort-label",
+        });
+      });
+
+      if (resortList.length > 0) {
+        const bounds = L.latLngBounds(resortList.map(r => [RESORT_COORDS[r.name].lat, RESORT_COORDS[r.name].lng]));
+        map.fitBounds(bounds.pad(0.4));
+      }
+    };
+    loadLeaflet();
+    return () => { if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; } };
+  }, []);
+
+  return (
+    <div>
+      <style>{`
+        .resort-label {
+          background: rgba(10,22,40,0.85) !important;
+          border: 1px solid rgba(142,197,252,0.3) !important;
+          color: #fff !important;
+          font-family: 'DM Sans', sans-serif !important;
+          font-weight: 700 !important;
+          font-size: 11px !important;
+          padding: 3px 8px !important;
+          border-radius: 6px !important;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+        }
+        .resort-label::before {
+          border-top-color: rgba(10,22,40,0.85) !important;
+        }
+      `}</style>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+        <span>🗺</span> Resort Map
+      </h3>
+      <div ref={mapRef} style={{ height: 500, borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }} />
+      <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif", textAlign: "center" }}>
+        {resortList.length} resort{resortList.length !== 1 ? "s" : ""} · tap pins for details
+      </div>
+    </div>
+  );
+}
+// ── Nav Tabs ──
+function NavTabs({ active, setActive }) {
+  const tabs = [
+    { id: "overview", label: "Overview", icon: "📊" },
+    { id: "sessions", label: "Sessions", icon: "📋" },
+    { id: "records", label: "Records", icon: "🏆" },
+    { id: "resorts", label: "Resorts", icon: "⛷" },
+    { id: "map", label: "Map", icon: "🗺" },
+  ];
+
+  return (
+    <div style={{
+      display: "flex",
+      gap: 4,
+      background: "rgba(255,255,255,0.04)",
+      borderRadius: 12,
+      padding: 4,
+      marginBottom: 24,
+      overflowX: "auto",
+    }}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => setActive(t.id)}
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            background: active === t.id ? "rgba(142,197,252,0.15)" : "transparent",
+            border: active === t.id ? "1px solid rgba(142,197,252,0.2)" : "1px solid transparent",
+            borderRadius: 8,
+            color: active === t.id ? "#8ec5fc" : "rgba(255,255,255,0.45)",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif",
+            whiteSpace: "nowrap",
+            transition: "all 0.2s",
+          }}
+        >
+          <span style={{ marginRight: 4 }}>{t.icon}</span>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Main App ──
+function SkiTracker() {
+  const [sessions, setSessions] = useState([]);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [deletingSession, setDeletingSession] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  // Firebase init (singleton)
+  const firebaseConfig = {
+    apiKey: "AIzaSyAnAWxomsz8XmXu3pDVn5QETliyCuBmBwM",
+    authDomain: "vert-25c90.firebaseapp.com",
+    projectId: "vert-25c90",
+    storageBucket: "vert-25c90.firebasestorage.app",
+    messagingSenderId: "614878832014",
+    appId: "1:614878832014:web:44187f4ba3b83fc68bb0df"
+  };
+
+  const getApp = () => {
+    if (!window._fbApp) {
+      window._fbApp = firebase.initializeApp(firebaseConfig);
+    }
+    return window._fbApp;
+  };
+  const getAuth = () => firebase.auth(getApp());
+  const getDb = () => firebase.firestore(getApp());
+
+  // Auth state listener — persist login across browser closes
+  useEffect(() => {
+    const auth = getAuth();
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(() => {
+      const unsub = auth.onAuthStateChanged((u) => {
+        setUser(u);
+        setAuthLoading(false);
+      });
+      return () => unsub();
+    });
+  }, []);
+
+  // Load sessions from Firestore when user logs in
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      return;
+    }
+    setSyncing(true);
+    const db = getDb();
+    const userDocRef = db.collection("users").doc(user.uid);
+    let didSeed = false;
+
+    // First check if this user was ever initialized
+    userDocRef.get().then((userMeta) => {
+      const isInitialized = userMeta.exists && userMeta.data()?.initialized;
+
+      // Now listen to sessions in real-time
+      const unsub = userDocRef.collection("sessions")
+        .onSnapshot((snap) => {
+          if (snap.empty && !isInitialized && !didSeed) {
+            // Brand new user — seed with preloaded sessions
+            didSeed = true;
+            const batch = db.batch();
+            PRELOADED_SESSIONS.forEach((s) => {
+              batch.set(userDocRef.collection("sessions").doc(s.id), s);
+            });
+            batch.set(userDocRef, { initialized: true }, { merge: true });
+            batch.commit();
+            // onSnapshot will fire again with the seeded data
+          } else {
+            const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+            setSessions(data.sort((a, b) => a.date.localeCompare(b.date)));
+          }
+          setSyncing(false);
+        }, (err) => {
+          console.error("Firestore error:", err);
+          setSyncing(false);
+        });
+
+      // Store unsub so cleanup works
+      window._fbUnsub = unsub;
+    });
+
+    return () => {
+      if (window._fbUnsub) window._fbUnsub();
+    };
+  }, [user]);
+
+  const signIn = async () => {
+    try {
+      const auth = getAuth();
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+    } catch (err) {
+      // If popup blocked (common on mobile), try redirect
+      if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
+        try {
+          const auth = getAuth();
+          const provider = new firebase.auth.GoogleAuthProvider();
+          await auth.signInWithRedirect(provider);
+        } catch (err2) {
+          console.error("Redirect sign in error:", err2);
+        }
+      } else {
+        console.error("Sign in error:", err);
+      }
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await getAuth().signOut();
+      setSessions([]);
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
+  };
+
+  const addSession = async (session) => {
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).set(session);
+  };
+
+  const clearAllSessions = async () => {
+    const db = getDb();
+    const snap = await db.collection("users").doc(user.uid).collection("sessions").get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    // Mark as initialized so seeding doesn't happen again
+    await db.collection("users").doc(user.uid).set({ initialized: true }, { merge: true });
+    setSessions([]);
+    setShowClearConfirm(false);
+    setActiveTab("overview");
+  };
+
+  const updateSession = async (updated) => {
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(updated.id).set(updated);
+  };
+
+  const deleteSession = async (session) => {
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).delete();
+    setDeletingSession(null);
+  };
+
+  const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+  const totalVert = sessions.reduce((a, s) => a + (s.vertical || 0), 0);
+  const totalDist = sessions.reduce((a, s) => a + (s.distance || 0), 0);
+  const totalRuns = sessions.reduce((a, s) => a + (s.runs || 0), 0);
+  const topSpeed = Math.max(...sessions.map((s) => s.topSpeed || 0), 0);
+
+  // Loading state
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap'); @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <h1 style={{ fontSize: 32, fontFamily: "'Space Mono', monospace", background: "linear-gradient(135deg, #e0eafc, #8ec5fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 16 }}>⛷ VERT</h1>
+        <div style={{ width: 28, height: 28, border: "3px solid rgba(142,197,252,0.2)", borderTopColor: "#8ec5fc", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      </div>
+    );
+  }
+
+  // Login screen
+  if (!user) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');`}</style>
+        <h1 style={{ fontSize: 36, fontFamily: "'Space Mono', monospace", background: "linear-gradient(135deg, #e0eafc, #8ec5fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>⛷ VERT</h1>
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 40 }}>Lifetime Ski Tracker</p>
+        <button onClick={signIn} style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "14px 28px",
+          background: "#fff", border: "none", borderRadius: 12, cursor: "pointer",
+          fontSize: 15, fontWeight: 600, color: "#333", fontFamily: "'DM Sans', sans-serif",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Sign in with Google
+        </button>
+        <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, marginTop: 20, textAlign: "center" }}>
+          Your ski data syncs across all your devices
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)",
+      color: "#fff",
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Space+Mono:wght@400;700&display=swap');
+        @keyframes spin { to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { margin: 0; background: #0f1729; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{
+        padding: "28px 24px 20px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        maxWidth: 960,
+        margin: "0 auto",
+      }}>
+        <div>
+          <h1 style={{
+            fontSize: 24,
+            fontWeight: 700,
+            fontFamily: "'Space Mono', monospace",
+            letterSpacing: "-0.02em",
+            background: "linear-gradient(135deg, #e0eafc, #8ec5fc)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}>
+            ⛷ VERT
+          </h1>
+          <p style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.3)",
+            letterSpacing: "0.15em",
+            textTransform: "uppercase",
+            marginTop: 2,
+          }}>Lifetime Ski Tracker</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {syncing && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif" }}>Syncing...</span>}
+          {sessions.length > 0 && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 10,
+                color: "rgba(255,255,255,0.5)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              Clear All
+            </button>
+          )}
+          <button
+            onClick={() => setShowUpload(true)}
+            style={{
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #8ec5fc, #667eea)",
+              border: "none",
+              borderRadius: 10,
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            + Add Session
+          </button>
+          {user && (
+            <button onClick={signOut} title="Sign out" style={{
+              width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(142,197,252,0.3)",
+              background: "none", cursor: "pointer", overflow: "hidden", padding: 0, flexShrink: 0,
+            }}>
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <div style={{ width: "100%", height: "100%", background: "rgba(142,197,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#8ec5fc", fontSize: 14, fontWeight: 700 }}>
+                  {(user.displayName || user.email || "?")[0].toUpperCase()}
+                </div>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 40px" }}>
+
+        {/* Nav */}
+        <NavTabs active={activeTab} setActive={setActiveTab} />
+
+        {/* Lifetime Stats - only on overview */}
+        {activeTab === "overview" && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 12,
+          marginBottom: 28,
+        }}>
+          <StatCard label="Days" value={sessions.length} icon="📅" accent="#8ec5fc" />
+          <StatCard label="Vertical" value={totalVert.toLocaleString()} unit="m" icon="⬇" accent="#34d399" />
+          <StatCard label="Distance" value={totalDist.toFixed(1)} unit="km" icon="➡" accent="#a78bfa" />
+          <StatCard label="Runs" value={totalRuns} icon="🔄" accent="#f9a8d4" />
+          <StatCard label="Top Speed" value={topSpeed.toFixed(1)} unit="km/h" icon="⚡" accent="#fbbf24" />
+        </div>
+        )}
+
+        {/* Content */}
+        {activeTab === "overview" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+            <SeasonSummary sessions={sessions} />
+            <PersonalRecords sessions={sessions} />
+          </div>
+        )}
+
+        {activeTab === "sessions" && (
+          <div>
+            <SessionsHeader />
+            {sorted.map((s, i) => (
+              <SessionRow key={s.id} session={s} index={i} onEdit={setEditingSession} onDelete={setDeletingSession} />
+            ))}
+          </div>
+        )}
+
+        {activeTab === "records" && <PersonalRecords sessions={sessions} />}
+        {activeTab === "resorts" && <ResortBreakdown sessions={sessions} />}
+        {activeTab === "map" && <ResortMap sessions={sessions} />}
+      </div>
+
+      {showUpload && (
+        <UploadModal
+          onClose={() => setShowUpload(false)}
+          onSessionAdded={addSession}
+          sessions={sessions}
+        />
+      )}
+
+      {showClearConfirm && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000, padding: 24,
+        }} onClick={() => setShowClearConfirm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "linear-gradient(165deg, #1a2744, #162033)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 16, padding: "28px 24px", maxWidth: 340, width: "100%",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+              Clear All Sessions?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 24, lineHeight: 1.5 }}>
+              This will permanently delete all {sessions.length} sessions. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowClearConfirm(false)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#fff",
+              }}>Cancel</button>
+              <button onClick={clearAllSessions} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                border: "none", color: "#fff",
+              }}>Clear All</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingSession && (
+        <EditModal session={editingSession} onClose={() => setEditingSession(null)} onSave={updateSession} />
+      )}
+
+      {deletingSession && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000, padding: 24,
+        }} onClick={() => setDeletingSession(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "linear-gradient(165deg, #1a2744, #162033)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 16, padding: "28px 24px", maxWidth: 340, width: "100%",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🗑️</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+              Delete Session?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 24, lineHeight: 1.5 }}>
+              {deletingSession.resort} — {formatDate(deletingSession.date)}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDeletingSession(null)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#fff",
+              }}>Cancel</button>
+              <button onClick={() => deleteSession(deletingSession)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                border: "none", color: "#fff",
+              }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<SkiTracker />);
+  </script>
+</body>
+</html>
