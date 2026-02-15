@@ -26,6 +26,8 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
+const SCHEMA_VERSION = 1;
+
 const PRELOADED_SESSIONS = [
   {
     id: "s1",
@@ -39,6 +41,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 487,
     longestRun: 3.7,
     peakAlt: 3448,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s2",
@@ -52,6 +57,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 528,
     longestRun: 4.8,
     peakAlt: 3446,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s3",
@@ -65,6 +73,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 406,
     longestRun: 2.5,
     peakAlt: 3440,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s4",
@@ -78,6 +89,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 705,
     longestRun: 3.8,
     peakAlt: 2263,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s5",
@@ -91,6 +105,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 647,
     longestRun: 3.8,
     peakAlt: 2218,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s6",
@@ -104,6 +121,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 1435,
     longestRun: 6.2,
     peakAlt: 2228,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s7",
@@ -117,6 +137,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 592,
     longestRun: 3.4,
     peakAlt: 2224,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s8",
@@ -130,6 +153,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 1441,
     longestRun: 6.1,
     peakAlt: 2227,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
   {
     id: "s9",
@@ -143,6 +169,9 @@ const PRELOADED_SESSIONS = [
     tallestRun: 931,
     longestRun: 5.4,
     peakAlt: 2224,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
   },
 ];
 
@@ -1232,6 +1261,79 @@ function SkiTracker() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [lastExported, setLastExported] = useState(null);
+  const importRef = useRef(null);
+
+  // Load last exported date from localStorage (UI preference, not data)
+  useEffect(() => {
+    const saved = localStorage.getItem("vert_lastExported");
+    if (saved) setLastExported(saved);
+  }, []);
+
+  // Export all sessions as JSON
+  const exportData = () => {
+    const exportObj = {
+      appName: "vert",
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      recordCount: sessions.length,
+      data: sessions,
+    };
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `vert-export-${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    const now = new Date().toISOString();
+    setLastExported(now);
+    localStorage.setItem("vert_lastExported", now);
+  };
+
+  // Import sessions from JSON file
+  const importData = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const records = parsed.data || parsed;
+        if (!Array.isArray(records)) { alert("Invalid export file."); return; }
+        const db = getDb();
+        const batch = db.batch();
+        const now = new Date().toISOString();
+        let count = 0;
+        records.forEach((r) => {
+          if (!r.id || !r.date) return;
+          const enriched = {
+            ...r,
+            ownerId: user.uid,
+            updatedAt: r.updatedAt || now,
+            createdAt: r.createdAt || now,
+            schemaVersion: r.schemaVersion || SCHEMA_VERSION,
+          };
+          // Remove deleted flag on import (restores soft-deleted records)
+          delete enriched.deleted;
+          const ref = db.collection("users").doc(user.uid).collection("sessions").doc(r.id);
+          batch.set(ref, enriched);
+          count++;
+        });
+        // Mark initialized in case this is a fresh account
+        batch.set(db.collection("users").doc(user.uid), { initialized: true }, { merge: true });
+        await batch.commit();
+        alert(`Imported ${count} sessions.`);
+      } catch (err) {
+        alert("Error reading file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be re-imported
+    e.target.value = "";
+  };
 
   // Firebase init (singleton)
   const firebaseConfig = {
@@ -1287,13 +1389,14 @@ function SkiTracker() {
             didSeed = true;
             const batch = db.batch();
             PRELOADED_SESSIONS.forEach((s) => {
-              batch.set(userDocRef.collection("sessions").doc(s.id), s);
+              batch.set(userDocRef.collection("sessions").doc(s.id), { ...s, ownerId: user.uid });
             });
             batch.set(userDocRef, { initialized: true }, { merge: true });
             batch.commit();
             // onSnapshot will fire again with the seeded data
           } else {
-            const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+            const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+              .filter(d => !d.deleted);
             setSessions(data.sort((a, b) => a.date.localeCompare(b.date)));
           }
           setSyncing(false);
@@ -1342,8 +1445,16 @@ function SkiTracker() {
   };
 
   const addSession = async (session) => {
+    const now = new Date().toISOString();
+    const enriched = {
+      ...session,
+      ownerId: user.uid,
+      createdAt: session.createdAt || now,
+      updatedAt: now,
+      schemaVersion: SCHEMA_VERSION,
+    };
     const db = getDb();
-    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).set(session);
+    await db.collection("users").doc(user.uid).collection("sessions").doc(enriched.id).set(enriched);
   };
 
   const clearAllSessions = async () => {
@@ -1360,13 +1471,22 @@ function SkiTracker() {
   };
 
   const updateSession = async (updated) => {
+    const enriched = {
+      ...updated,
+      updatedAt: new Date().toISOString(),
+      schemaVersion: SCHEMA_VERSION,
+    };
     const db = getDb();
-    await db.collection("users").doc(user.uid).collection("sessions").doc(updated.id).set(updated);
+    await db.collection("users").doc(user.uid).collection("sessions").doc(enriched.id).set(enriched);
   };
 
   const deleteSession = async (session) => {
+    // Soft delete — mark as deleted instead of removing from Firestore
     const db = getDb();
-    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).delete();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).set(
+      { deleted: true, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
     setDeletingSession(null);
   };
 
@@ -1496,18 +1616,65 @@ function SkiTracker() {
             + Add Session
           </button>
           {user && (
-            <button onClick={signOut} title="Sign out" style={{
-              width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(142,197,252,0.3)",
-              background: "none", cursor: "pointer", overflow: "hidden", padding: 0, flexShrink: 0,
-            }}>
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <div style={{ width: "100%", height: "100%", background: "rgba(142,197,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#8ec5fc", fontSize: 14, fontWeight: 700 }}>
-                  {(user.displayName || user.email || "?")[0].toUpperCase()}
-                </div>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowSettings(!showSettings)} title="Settings" style={{
+                width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(142,197,252,0.3)",
+                background: "none", cursor: "pointer", overflow: "hidden", padding: 0, flexShrink: 0,
+              }}>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", background: "rgba(142,197,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#8ec5fc", fontSize: 14, fontWeight: 700 }}>
+                    {(user.displayName || user.email || "?")[0].toUpperCase()}
+                  </div>
+                )}
+              </button>
+              {showSettings && (
+                <>
+                  <div onClick={() => setShowSettings(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} />
+                  <div style={{
+                    position: "absolute", right: 0, top: 44, zIndex: 999,
+                    background: "linear-gradient(165deg, #1a2744, #162033)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 12, padding: "8px 0", minWidth: 200,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                  }}>
+                    <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{user.displayName || "User"}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{user.email}</div>
+                    </div>
+                    <button onClick={() => { exportData(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#fff", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span>📦</span> Export Data
+                    </button>
+                    <button onClick={() => { importRef.current?.click(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#fff", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span>📥</span> Import Data
+                    </button>
+                    {lastExported && (
+                      <div style={{ padding: "6px 16px", fontSize: 10, color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                        Last export: {new Date(lastExported).toLocaleDateString()}
+                      </div>
+                    )}
+                    <button onClick={() => { signOut(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#ef4444", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                    }}>
+                      <span>🚪</span> Sign Out
+                    </button>
+                  </div>
+                </>
               )}
-            </button>
+              <input ref={importRef} type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
+            </div>
           )}
         </div>
       </div>
