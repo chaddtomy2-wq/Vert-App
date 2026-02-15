@@ -1,1053 +1,2157 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Praxis</title>
-  <meta name="theme-color" content="#0B0D12" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VERT — Lifetime Ski Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛷</text></svg>">
   <style>
-    html, body, #root { margin: 0; padding: 0; min-height: 100vh; background: #0B0D12; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { margin: 0; background: #0f1729; }
+    #loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'DM Sans', sans-serif; color: rgba(255,255,255,0.5); z-index: 9999; }
+    #loading .title { font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #e0eafc, #8ec5fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    #loading .dots { animation: pulse 1.5s ease-in-out infinite; }
   </style>
-
-  <!-- Firebase (compat/UMD) -->
-  <script src="https://www.gstatic.com/firebasejs/11.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.7.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore-compat.js"></script>
-
-  <!-- React (UMD) + Babel -->
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+  <script>const origWarn=console.warn;console.warn=function(...a){if(a[0]&&typeof a[0]==='string'&&a[0].includes('in-browser Babel'))return;origWarn.apply(console,a)};</script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 </head>
 <body>
-  <div id="root"></div>
-
+  <div id="root"><div id="loading"><div class="title">⛷ VERT</div><div class="dots">Loading...</div></div></div>
   <script type="text/babel">
-// ─── Version Constants ────────────────────────────────────
-const APP_NAME = "Praxis";
-const APP_VERSION = "V1";
-const BUILD_DATE = "2026-02-15";
+    const { useState, useEffect, useRef, useCallback } = React;
+
 const SCHEMA_VERSION = 1;
 
-// ─── React globals ─────────────────────────────────────
-const { useState, useEffect, useRef, useCallback } = React;
-
-// ─── Firebase Config ──────────────────────────────────────
-const firebaseConfig = {
-  apiKey: "AIzaSyCAN5KJSiq775mBqZffq6TvDwYVpe98Xsk",
-  authDomain: "praxis-v2.firebaseapp.com",
-  projectId: "praxis-v2",
-  storageBucket: "praxis-v2.firebasestorage.app",
-  messagingSenderId: "822050587129",
-  appId: "1:822050587129:web:f6b9802a491d3136ce7d28",
-};
-firebase.initializeApp(firebaseConfig);
-const fbAuth = firebase.auth();
-const fbDb = firebase.firestore();
-const googleProvider = new firebase.auth.GoogleAuthProvider();
-
-// ─── PRAXIS SEED DATA ────────────────────────────────────
-
-const ENTRIES = [
-  { id: 1, title: "Train Your Mind Like Your Body", pillar: "Mental Discipline", content: "Placebo is considered one of the most impactful effects in pharmacology.\n\nIn other words, the human mind is powerful enough to change your biology.\n\nThe mind doesn't just interpret reality — it helps create it.\n\nTrain and hone your thoughts like you train your body." },
-  { id: 2, title: "The Narrative Layer Creates Suffering", pillar: "Perception", content: "One of the most transformative perspective shifts is learning to distinguish between what happens to you and the story you tell yourself about what happens to you.\n\nMost suffering doesn't come from events themselves, but from the narrative layer we wrap around them — the assumptions about what it means, what it says about us, and what will happen next.\n\nYour first interpretation is often just your most practiced one, not your most accurate one.\n\nThere is a space between stimulus and response. That space is where freedom lives. Most people never notice it exists.\n\nWhen you catch yourself storytelling — \"I notice I'm telling myself this means X\" — you regain power over your emotional life. You stop being a passive recipient of reactions and become someone who chooses how to engage with difficulty." },
-  { id: 3, title: "State → Story → Action → Life", pillar: "Perception", content: "The state you're in dictates the story you tell yourself.\n\nThe story you tell yourself dictates the action you take.\n\nThe actions you take dictate the life you live." },
-  { id: 4, title: "The Subconscious Cannot Tell Pretend From Real", pillar: "Identity", content: "The subconscious mind cannot understand sarcasm or irony. It does not know the difference between an imagined event and a real memory.\n\nActors, fully aware they are performing, still fall victim to this effect.\n\nJames Gandolfini once said that playing Tony Soprano for years \"left seeds of Tony inside him.\"\n\nThe subconscious cannot tell when you are playing pretend.\n\nRepeatedly acting as something will slowly wire it into existence." },
-  { id: 5, title: "Collapse the Gap Between Decision and Action", pillar: "Mental Discipline", content: "The distance between deciding and doing is one of the most reliable predictors of whether your life will be extraordinary or ordinary.\n\nNot talent. Not circumstances. Not even the quality of your decisions — but how quickly you collapse the space between intention and execution.\n\nWhen you move from \"I should do this\" to physically doing it within hours instead of weeks, you operate differently.\n\nSuccess isn't about outcomes — it's about iteration speed.\n\nThe faster your decisions meet reality, the faster you receive feedback. The brutal honesty of immediate feedback separates extraordinary results from extraordinary intentions." },
-  { id: 6, title: "The Solomon Paradox — We Are Wiser For Others", pillar: "Cognitive Biases", content: "We often possess wisdom we cannot access when we need it most.\n\nWhen advising others, we see patterns clearly. We offer balanced, compassionate insight that acknowledges complexity without drowning in it.\n\nYet when facing our own decisions, we become immersed, reactive, and narrow in perspective.\n\nThe paradox is not that we lack wisdom — it's that we lack distance.\n\nPerspective, not intelligence, is often the difference between foolishness and insight." },
-  { id: 7, title: "Meditation Resets Your Baseline", pillar: "Mindfulness", content: "Meditation is not a dramatic breakthrough. It is the gradual rewiring of your relationship with your own mind.\n\nMost people are swept away by an endless internal monologue. Meditation creates distance from thought.\n\nOver months and years, this changes your emotional baseline.\n\nInstead of being consumed by resistance and commentary, you learn to meet experience directly.\n\nWhat you resist persists. What you observe transforms." },
-  { id: 8, title: "Stop Fighting Reality", pillar: "Mindfulness", content: "The exhausting war between what is and what you think should be is the fundamental human struggle.\n\nYou cannot work against reality because you are not separate from it.\n\nThe world includes your resistance. When you fight reality, reality wins.\n\nPower lies not in opposing what is happening, but in choosing how you meet it.\n\nWhat you resist persists. What you meet with awareness transforms." },
-  { id: 9, title: "Identity Is Built Through Repetition", pillar: "Identity", content: "Identity is not what you believe about yourself — it is what your nervous system has learned through repetition.\n\nYou do not become disciplined by deciding to be disciplined. You become disciplined by behaving that way until the pattern becomes automatic.\n\nAround 50–70 days of consistent behavior begins to feel natural.\n\nThe basal ganglia absorbs repetition and turns conscious effort into automatic action.\n\nYou become the person you repeatedly act as." },
-  { id: 10, title: "Never Let Illness Become Your Identity", pillar: "Identity", content: "Guard your mind viciously.\n\nIt is a catastrophic mistake to curse your own identity in any way.\n\nNever allow illness, struggle, or suffering to become who you are.\n\nEven in the face of difficulty, dignity remains.\n\nYou may experience symptoms. You may feel weakness.\n\nBut you are not the illness." },
-  { id: 11, title: "Live One Day At A Time", pillar: "Resilience", content: "Anyone can carry their burden, however hard, until nightfall.\n\nAnyone can do their work, however hard, for one day.\n\nAnyone can live patiently and purely until the sun goes down.\n\nAnd this is all life really means." },
-  { id: 12, title: "Success Is the Failures You Avoid", pillar: "Wealth & Power", content: "Success is largely the failures you avoid.\n\nHealth is the injuries you don't sustain.\nWealth is the purchases you don't make.\nHappiness is the objects you don't desire.\nPeace of mind is the arguments you don't engage.\n\nAvoid the bad to protect the good." },
-  { id: 13, title: "Nearly Everything Takes Longer Than You Think", pillar: "Resilience", content: "Nearly everything worthwhile takes longer than you expect.\n\nStart anyway.\nStop obsessing over the clock." },
-  { id: 14, title: "You Can Be Uncertain and Still Move Forward", pillar: "Mental Discipline", content: "You are allowed to be uncertain and still move forward." },
-  { id: 15, title: "Use What Is Instead of Complaining About What Should Be", pillar: "Leadership", content: "Some people see what should be and complain when they don't get their due.\n\nOthers see what is — and figure out how to use it to their advantage." },
-  { id: 16, title: "You Don't Have to Drink the Rain", pillar: "Mindfulness", content: "When water falls on you like rain, it evaporates.\n\nThoughts are the same.\n\nYou may feel fear, anger, sadness — but you don't have to absorb them.\n\nLet the thought pass the way rain dries in the sun.\n\nYou can experience a feeling without claiming it as identity." },
-  { id: 17, title: "The Mind Makes Heaven or Hell", pillar: "Perception", content: "The mind itself is a place, and in itself can make a heaven of hell, or a hell of heaven." },
-  { id: 18, title: "Curiosity Is the Foundation of Virtue", pillar: "Identity", content: "Curiosity is the foundation of all virtues." },
-  { id: 19, title: "Attention Shapes Reality", pillar: "Perception", content: "Perception, attention, and reality are three sides of the same crucible.\n\nChange one and you change the others.\n\nYour reality is shaped by what you attend to." },
-  { id: 20, title: "Unhappiness Comes From Wanting What You Don't Have", pillar: "Mindfulness", content: "If you are unhappy, think about what you desire that you don't have." },
-  { id: 21, title: "Achievements Do Not Create Happiness", pillar: "Perception", content: "If past achievements didn't make you meaningfully happier, future achievements won't either.\n\nYou are roughly as happy as you decide to be today.\n\nLong-term happiness doesn't arrive when you achieve something.\n\nIt arrives when you decide to be happy — even after you achieve it." },
-  { id: 22, title: "Laziness Is Focusing on Effort Instead of Outcome", pillar: "Mental Discipline", content: "Laziness is the habit of thinking about the effort rather than the outcome." },
-  { id: 23, title: "Discipline Makes Today Harder and Tomorrow Easier", pillar: "Mental Discipline", content: "Excuses make today easier and tomorrow harder.\n\nDiscipline makes today harder and tomorrow easier." },
-  { id: 24, title: "Action Is What Changes You", pillar: "Mental Discipline", content: "Thoughts don't change the world.\n\nAction does.\n\nAction changes your environment.\nAction changes your state.\nAction changes you." },
-  { id: 25, title: "Anxiety Is Overthinking and Underreacting", pillar: "Cognitive Biases", content: "Anxiety is overthinking and underreacting.\n\nStress often comes from not taking action toward something you have control over." },
-  { id: 26, title: "Each Action Is a Brushstroke Toward Identity", pillar: "Identity", content: "Each action is a brushstroke toward the person you are becoming." },
-  { id: 27, title: "Ask for More Than Feels Reasonable", pillar: "Leadership", content: "Ask for things that feel unreasonable.\n\nIf you only ask for what you already get, you're not aiming high enough." },
-  { id: 28, title: "Prove Who You Are With Small Wins", pillar: "Identity", content: "Decide the type of person you want to be.\n\nProve it to yourself with small wins." },
-  { id: 29, title: "Channel Worry Into One Useful Action", pillar: "Mental Discipline", content: "Take all the energy you spend worrying —\n\nAbout the past. About the future. About what others think. About whether you might fail.\n\n… and channel it into one useful action within your control." },
-  { id: 30, title: "You Cannot Grow by Staying Within What You Can Already Do", pillar: "Craft & Mastery", content: "If you only do what you can already do, you will never be more than you are." },
-  { id: 31, title: "What Can I Stick to on My Worst Days?", pillar: "Mental Discipline", content: "When building a habit, don't ask what you can do on your best days.\n\nAsk what you can sustain on your worst days.\n\nStart small. Master consistency. Scale when ready." },
-  { id: 32, title: "Craving the Result Without the Process Guarantees Disappointment", pillar: "Mental Discipline", content: "If you aren't willing to do what it takes, release the desire.\n\nTo crave the result but reject the process guarantees disappointment." },
-  { id: 33, title: "Nothing Changes If Nothing Changes", pillar: "Mental Discipline", content: "Nothing changes if nothing changes." },
-  { id: 34, title: "What You Avoid Controls You", pillar: "Mental Discipline", content: "What you avoid controls you." },
+const PRELOADED_SESSIONS = [
+  {
+    id: "s1",
+    date: "2022-11-21",
+    resort: "Breckenridge Resort",
+    runs: 15,
+    vertical: 5314,
+    distance: 36.6,
+    topSpeed: 77.6,
+    totalTime: "4h 51min",
+    tallestRun: 487,
+    longestRun: 3.7,
+    peakAlt: 3448,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s2",
+    date: "2022-11-22",
+    resort: "Breckenridge Resort",
+    runs: 12,
+    vertical: 5132,
+    distance: 32.2,
+    topSpeed: 68.1,
+    totalTime: "4h 14min",
+    tallestRun: 528,
+    longestRun: 4.8,
+    peakAlt: 3446,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s3",
+    date: "2022-11-23",
+    resort: "Breckenridge Resort",
+    runs: 9,
+    vertical: 3515,
+    distance: 18.9,
+    topSpeed: 70.0,
+    totalTime: "3h 38min",
+    tallestRun: 406,
+    longestRun: 2.5,
+    peakAlt: 3440,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s4",
+    date: "2025-01-30",
+    resort: "Big White Ski Resort",
+    runs: 11,
+    vertical: 4723,
+    distance: 24.5,
+    topSpeed: 55.2,
+    totalTime: "3h 23min",
+    tallestRun: 705,
+    longestRun: 3.8,
+    peakAlt: 2263,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s5",
+    date: "2025-02-02",
+    resort: "Big White Ski Resort",
+    runs: 9,
+    vertical: 3536,
+    distance: 19.3,
+    topSpeed: 60.8,
+    totalTime: "3h 25min",
+    tallestRun: 647,
+    longestRun: 3.8,
+    peakAlt: 2218,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s6",
+    date: "2025-02-04",
+    resort: "Revelstoke Mountain Resort",
+    runs: 9,
+    vertical: 5406,
+    distance: 26.6,
+    topSpeed: 54.8,
+    totalTime: "4h 54min",
+    tallestRun: 1435,
+    longestRun: 6.2,
+    peakAlt: 2228,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s7",
+    date: "2025-02-06",
+    resort: "Revelstoke Mountain Resort",
+    runs: 2,
+    vertical: 695,
+    distance: 4.0,
+    topSpeed: 51.8,
+    totalTime: "1h 2min",
+    tallestRun: 592,
+    longestRun: 3.4,
+    peakAlt: 2224,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s8",
+    date: "2026-01-13",
+    resort: "Revelstoke Mountain Resort",
+    runs: 12,
+    vertical: 5174,
+    distance: 28.6,
+    topSpeed: 61.1,
+    totalTime: "5h 6min",
+    tallestRun: 1441,
+    longestRun: 6.1,
+    peakAlt: 2227,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
+  {
+    id: "s9",
+    date: "2026-01-14",
+    resort: "Revelstoke Mountain Resort",
+    runs: 10,
+    vertical: 5157,
+    distance: 28.7,
+    topSpeed: 56.5,
+    totalTime: "4h 33min",
+    tallestRun: 931,
+    longestRun: 5.4,
+    peakAlt: 2224,
+    schemaVersion: SCHEMA_VERSION,
+    createdAt: "2026-02-11T00:00:00Z",
+    updatedAt: "2026-02-11T00:00:00Z",
+  },
 ];
 
-const PILLARS = ["Identity","Mental Discipline","Perception","Resilience","Craft & Mastery","Wealth & Power","Leadership","Relationships","Mindfulness","Cognitive Biases"];
-const PS = {
-  Identity:           { accent: "#d8b4fe", bg: "linear-gradient(145deg, #221828 0%, #131620 100%)" },
-  "Mental Discipline":{ accent: "#d9f99d", bg: "linear-gradient(145deg, #1e2214 0%, #131620 100%)" },
-  Perception:         { accent: "#93e0ff", bg: "linear-gradient(145deg, #142028 0%, #131620 100%)" },
-  Resilience:         { accent: "#fdc88e", bg: "linear-gradient(145deg, #261c14 0%, #131620 100%)" },
-  "Craft & Mastery":  { accent: "#7ef0d8", bg: "linear-gradient(145deg, #142620 0%, #131620 100%)" },
-  "Wealth & Power":   { accent: "#fee770", bg: "linear-gradient(145deg, #262414 0%, #131620 100%)" },
-  Leadership:         { accent: "#fbb8da", bg: "linear-gradient(145deg, #26141e 0%, #131620 100%)" },
-  Relationships:      { accent: "#86efcb", bg: "linear-gradient(145deg, #142624 0%, #131620 100%)" },
-  Mindfulness:        { accent: "#b8c4ff", bg: "linear-gradient(145deg, #141828 0%, #131620 100%)" },
-  "Cognitive Biases": { accent: "#fdb8b8", bg: "linear-gradient(145deg, #261418 0%, #131620 100%)" },
+const RESORT_COORDS = {
+  // ── COLORADO ──
+  "Breckenridge Resort": { lat: 39.4817, lng: -106.0384, location: "Colorado, USA" },
+  "Breckenridge": { lat: 39.4817, lng: -106.0384, location: "Colorado, USA" },
+  "Vail": { lat: 39.6061, lng: -106.3550, location: "Colorado, USA" },
+  "Vail Mountain Resort": { lat: 39.6061, lng: -106.3550, location: "Colorado, USA" },
+  "Aspen Snowmass": { lat: 39.2084, lng: -106.9490, location: "Colorado, USA" },
+  "Aspen Mountain": { lat: 39.1869, lng: -106.8186, location: "Colorado, USA" },
+  "Aspen Highlands": { lat: 39.1782, lng: -106.8553, location: "Colorado, USA" },
+  "Snowmass": { lat: 39.2084, lng: -106.9490, location: "Colorado, USA" },
+  "Buttermilk": { lat: 39.2069, lng: -106.8684, location: "Colorado, USA" },
+  "Steamboat": { lat: 40.4572, lng: -106.8045, location: "Colorado, USA" },
+  "Steamboat Springs": { lat: 40.4572, lng: -106.8045, location: "Colorado, USA" },
+  "Telluride": { lat: 37.9375, lng: -107.8123, location: "Colorado, USA" },
+  "Telluride Ski Resort": { lat: 37.9375, lng: -107.8123, location: "Colorado, USA" },
+  "Winter Park": { lat: 39.8841, lng: -105.7625, location: "Colorado, USA" },
+  "Winter Park Resort": { lat: 39.8841, lng: -105.7625, location: "Colorado, USA" },
+  "Copper Mountain": { lat: 39.5022, lng: -106.1497, location: "Colorado, USA" },
+  "Keystone": { lat: 39.6069, lng: -105.9497, location: "Colorado, USA" },
+  "Keystone Resort": { lat: 39.6069, lng: -105.9497, location: "Colorado, USA" },
+  "Arapahoe Basin": { lat: 39.6426, lng: -105.8719, location: "Colorado, USA" },
+  "A-Basin": { lat: 39.6426, lng: -105.8719, location: "Colorado, USA" },
+  "Crested Butte": { lat: 38.8986, lng: -106.9650, location: "Colorado, USA" },
+  "Crested Butte Mountain Resort": { lat: 38.8986, lng: -106.9650, location: "Colorado, USA" },
+  "Beaver Creek": { lat: 39.6042, lng: -106.5164, location: "Colorado, USA" },
+  "Beaver Creek Resort": { lat: 39.6042, lng: -106.5164, location: "Colorado, USA" },
+  "Loveland": { lat: 39.6800, lng: -105.8978, location: "Colorado, USA" },
+  "Loveland Ski Area": { lat: 39.6800, lng: -105.8978, location: "Colorado, USA" },
+  "Purgatory": { lat: 37.6303, lng: -107.8142, location: "Colorado, USA" },
+  "Purgatory Resort": { lat: 37.6303, lng: -107.8142, location: "Colorado, USA" },
+  "Wolf Creek": { lat: 37.4725, lng: -106.7939, location: "Colorado, USA" },
+  "Wolf Creek Ski Area": { lat: 37.4725, lng: -106.7939, location: "Colorado, USA" },
+  "Monarch Mountain": { lat: 38.5122, lng: -106.3322, location: "Colorado, USA" },
+  "Eldora": { lat: 39.9375, lng: -105.5828, location: "Colorado, USA" },
+  "Eldora Mountain Resort": { lat: 39.9375, lng: -105.5828, location: "Colorado, USA" },
+  "Ski Cooper": { lat: 39.3614, lng: -106.3028, location: "Colorado, USA" },
+  "Sunlight Mountain": { lat: 39.3992, lng: -107.3392, location: "Colorado, USA" },
+  "Powderhorn": { lat: 39.0681, lng: -108.1508, location: "Colorado, USA" },
+  // ── UTAH ──
+  "Park City": { lat: 40.6514, lng: -111.5080, location: "Utah, USA" },
+  "Park City Mountain": { lat: 40.6514, lng: -111.5080, location: "Utah, USA" },
+  "Park City Mountain Resort": { lat: 40.6514, lng: -111.5080, location: "Utah, USA" },
+  "Deer Valley": { lat: 40.6375, lng: -111.4783, location: "Utah, USA" },
+  "Deer Valley Resort": { lat: 40.6375, lng: -111.4783, location: "Utah, USA" },
+  "Snowbird": { lat: 40.5830, lng: -111.6538, location: "Utah, USA" },
+  "Alta": { lat: 40.5884, lng: -111.6386, location: "Utah, USA" },
+  "Alta Ski Area": { lat: 40.5884, lng: -111.6386, location: "Utah, USA" },
+  "Brighton": { lat: 40.5980, lng: -111.5833, location: "Utah, USA" },
+  "Brighton Resort": { lat: 40.5980, lng: -111.5833, location: "Utah, USA" },
+  "Solitude": { lat: 40.6199, lng: -111.5919, location: "Utah, USA" },
+  "Solitude Mountain Resort": { lat: 40.6199, lng: -111.5919, location: "Utah, USA" },
+  "Snowbasin": { lat: 41.2160, lng: -111.8569, location: "Utah, USA" },
+  "Snowbasin Resort": { lat: 41.2160, lng: -111.8569, location: "Utah, USA" },
+  "Powder Mountain": { lat: 41.3789, lng: -111.7808, location: "Utah, USA" },
+  "Nordic Valley": { lat: 41.3103, lng: -111.8647, location: "Utah, USA" },
+  "Sundance": { lat: 40.3930, lng: -111.5872, location: "Utah, USA" },
+  "Sundance Mountain Resort": { lat: 40.3930, lng: -111.5872, location: "Utah, USA" },
+  "Brian Head": { lat: 37.7022, lng: -112.8497, location: "Utah, USA" },
+  "Brian Head Resort": { lat: 37.7022, lng: -112.8497, location: "Utah, USA" },
+  "Eagle Point": { lat: 38.3203, lng: -112.3839, location: "Utah, USA" },
+  "Cherry Peak": { lat: 41.9269, lng: -111.7472, location: "Utah, USA" },
+  "Beaver Mountain": { lat: 41.9683, lng: -111.5422, location: "Utah, USA" },
+  // ── CALIFORNIA ──
+  "Mammoth Mountain": { lat: 37.6308, lng: -119.0326, location: "California, USA" },
+  "Mammoth": { lat: 37.6308, lng: -119.0326, location: "California, USA" },
+  "Palisades Tahoe": { lat: 39.1968, lng: -120.2354, location: "California, USA" },
+  "Squaw Valley": { lat: 39.1968, lng: -120.2354, location: "California, USA" },
+  "Alpine Meadows": { lat: 39.1644, lng: -120.2386, location: "California, USA" },
+  "Heavenly": { lat: 38.9353, lng: -119.9400, location: "California, USA" },
+  "Heavenly Mountain Resort": { lat: 38.9353, lng: -119.9400, location: "California, USA" },
+  "Kirkwood": { lat: 38.6850, lng: -120.0653, location: "California, USA" },
+  "Kirkwood Mountain Resort": { lat: 38.6850, lng: -120.0653, location: "California, USA" },
+  "Northstar": { lat: 39.2746, lng: -120.1210, location: "California, USA" },
+  "Northstar California": { lat: 39.2746, lng: -120.1210, location: "California, USA" },
+  "Sugar Bowl": { lat: 39.3047, lng: -120.3342, location: "California, USA" },
+  "Sierra at Tahoe": { lat: 38.8002, lng: -120.0800, location: "California, USA" },
+  "Boreal": { lat: 39.3328, lng: -120.3483, location: "California, USA" },
+  "Dodge Ridge": { lat: 38.1900, lng: -119.9564, location: "California, USA" },
+  "Bear Valley": { lat: 38.4572, lng: -120.0417, location: "California, USA" },
+  "Mt. Bachelor": { lat: 43.9792, lng: -121.6886, location: "Oregon, USA" },
+  "June Mountain": { lat: 37.7672, lng: -119.0906, location: "California, USA" },
+  "China Peak": { lat: 37.2339, lng: -119.1575, location: "California, USA" },
+  "Mountain High": { lat: 34.3722, lng: -117.6931, location: "California, USA" },
+  "Big Bear Mountain Resort": { lat: 34.2364, lng: -116.8906, location: "California, USA" },
+  "Snow Summit": { lat: 34.2364, lng: -116.8906, location: "California, USA" },
+  "Snow Valley": { lat: 34.2247, lng: -117.0372, location: "California, USA" },
+  // ── WYOMING / MONTANA / IDAHO ──
+  "Jackson Hole": { lat: 43.5877, lng: -110.8279, location: "Wyoming, USA" },
+  "Jackson Hole Mountain Resort": { lat: 43.5877, lng: -110.8279, location: "Wyoming, USA" },
+  "Grand Targhee": { lat: 43.7903, lng: -110.9581, location: "Wyoming, USA" },
+  "Grand Targhee Resort": { lat: 43.7903, lng: -110.9581, location: "Wyoming, USA" },
+  "Big Sky": { lat: 45.2836, lng: -111.4014, location: "Montana, USA" },
+  "Big Sky Resort": { lat: 45.2836, lng: -111.4014, location: "Montana, USA" },
+  "Whitefish Mountain Resort": { lat: 48.4842, lng: -114.3553, location: "Montana, USA" },
+  "Whitefish": { lat: 48.4842, lng: -114.3553, location: "Montana, USA" },
+  "Bridger Bowl": { lat: 45.8178, lng: -110.8964, location: "Montana, USA" },
+  "Red Lodge Mountain": { lat: 45.1856, lng: -109.3350, location: "Montana, USA" },
+  "Sun Valley": { lat: 43.6975, lng: -114.3514, location: "Idaho, USA" },
+  "Sun Valley Resort": { lat: 43.6975, lng: -114.3514, location: "Idaho, USA" },
+  "Schweitzer": { lat: 48.3678, lng: -116.6225, location: "Idaho, USA" },
+  "Schweitzer Mountain": { lat: 48.3678, lng: -116.6225, location: "Idaho, USA" },
+  "Brundage Mountain": { lat: 44.8583, lng: -116.1528, location: "Idaho, USA" },
+  "Tamarack Resort": { lat: 44.6853, lng: -116.1128, location: "Idaho, USA" },
+  "Bogus Basin": { lat: 43.7642, lng: -116.1053, location: "Idaho, USA" },
+  "Lookout Pass": { lat: 47.4544, lng: -115.6906, location: "Idaho/Montana, USA" },
+  "Silver Mountain": { lat: 47.5378, lng: -116.1147, location: "Idaho, USA" },
+  // ── PACIFIC NORTHWEST ──
+  "Mt. Bachelor": { lat: 43.9792, lng: -121.6886, location: "Oregon, USA" },
+  "Mount Bachelor": { lat: 43.9792, lng: -121.6886, location: "Oregon, USA" },
+  "Mt. Hood Meadows": { lat: 45.3314, lng: -121.6647, location: "Oregon, USA" },
+  "Timberline Lodge": { lat: 45.3311, lng: -121.7108, location: "Oregon, USA" },
+  "Mt. Hood Skibowl": { lat: 45.3031, lng: -121.7728, location: "Oregon, USA" },
+  "Crystal Mountain": { lat: 46.9353, lng: -121.5047, location: "Washington, USA" },
+  "Crystal Mountain Resort": { lat: 46.9353, lng: -121.5047, location: "Washington, USA" },
+  "Stevens Pass": { lat: 47.7453, lng: -121.0886, location: "Washington, USA" },
+  "The Summit at Snoqualmie": { lat: 47.4206, lng: -121.4136, location: "Washington, USA" },
+  "Snoqualmie Pass": { lat: 47.4206, lng: -121.4136, location: "Washington, USA" },
+  "Mt. Baker": { lat: 48.8569, lng: -121.6644, location: "Washington, USA" },
+  "Mt. Baker Ski Area": { lat: 48.8569, lng: -121.6644, location: "Washington, USA" },
+  "Mission Ridge": { lat: 47.2931, lng: -120.3997, location: "Washington, USA" },
+  "White Pass": { lat: 46.6369, lng: -121.3908, location: "Washington, USA" },
+  // ── NEW ENGLAND ──
+  "Killington": { lat: 43.6045, lng: -72.8201, location: "Vermont, USA" },
+  "Killington Resort": { lat: 43.6045, lng: -72.8201, location: "Vermont, USA" },
+  "Stowe": { lat: 44.5303, lng: -72.7814, location: "Vermont, USA" },
+  "Stowe Mountain Resort": { lat: 44.5303, lng: -72.7814, location: "Vermont, USA" },
+  "Sugarbush": { lat: 44.1358, lng: -72.9031, location: "Vermont, USA" },
+  "Sugarbush Resort": { lat: 44.1358, lng: -72.9031, location: "Vermont, USA" },
+  "Jay Peak": { lat: 44.9272, lng: -72.5286, location: "Vermont, USA" },
+  "Jay Peak Resort": { lat: 44.9272, lng: -72.5286, location: "Vermont, USA" },
+  "Mad River Glen": { lat: 44.2042, lng: -72.9178, location: "Vermont, USA" },
+  "Okemo": { lat: 43.4011, lng: -72.7167, location: "Vermont, USA" },
+  "Okemo Mountain Resort": { lat: 43.4011, lng: -72.7167, location: "Vermont, USA" },
+  "Stratton": { lat: 43.1133, lng: -72.9083, location: "Vermont, USA" },
+  "Stratton Mountain": { lat: 43.1133, lng: -72.9083, location: "Vermont, USA" },
+  "Mount Snow": { lat: 42.9603, lng: -72.9206, location: "Vermont, USA" },
+  "Bromley Mountain": { lat: 43.2264, lng: -72.9361, location: "Vermont, USA" },
+  "Bolton Valley": { lat: 44.4192, lng: -72.8500, location: "Vermont, USA" },
+  "Burke Mountain": { lat: 44.5850, lng: -71.8992, location: "Vermont, USA" },
+  "Smugglers' Notch": { lat: 44.5872, lng: -72.7853, location: "Vermont, USA" },
+  "Smugglers Notch": { lat: 44.5872, lng: -72.7853, location: "Vermont, USA" },
+  "Pico Mountain": { lat: 43.6617, lng: -72.8431, location: "Vermont, USA" },
+  "Sunday River": { lat: 44.4728, lng: -70.8569, location: "Maine, USA" },
+  "Sugarloaf": { lat: 45.0314, lng: -70.3131, location: "Maine, USA" },
+  "Sugarloaf Mountain": { lat: 45.0314, lng: -70.3131, location: "Maine, USA" },
+  "Saddleback": { lat: 44.9342, lng: -70.5067, location: "Maine, USA" },
+  "Loon Mountain": { lat: 44.0364, lng: -71.6208, location: "New Hampshire, USA" },
+  "Loon Mountain Resort": { lat: 44.0364, lng: -71.6208, location: "New Hampshire, USA" },
+  "Cannon Mountain": { lat: 44.1567, lng: -71.6986, location: "New Hampshire, USA" },
+  "Bretton Woods": { lat: 44.2578, lng: -71.4628, location: "New Hampshire, USA" },
+  "Wildcat Mountain": { lat: 44.2631, lng: -71.2389, location: "New Hampshire, USA" },
+  "Attitash": { lat: 44.0828, lng: -71.2297, location: "New Hampshire, USA" },
+  "Waterville Valley": { lat: 43.9597, lng: -71.5286, location: "New Hampshire, USA" },
+  "Cranmore Mountain": { lat: 44.0553, lng: -71.1139, location: "New Hampshire, USA" },
+  "Gunstock": { lat: 43.5431, lng: -71.3611, location: "New Hampshire, USA" },
+  "Wachusett Mountain": { lat: 42.4903, lng: -71.8864, location: "Massachusetts, USA" },
+  "Berkshire East": { lat: 42.6236, lng: -72.8900, location: "Massachusetts, USA" },
+  "Jiminy Peak": { lat: 42.5375, lng: -73.2747, location: "Massachusetts, USA" },
+  // ── NEW YORK / MID-ATLANTIC ──
+  "Whiteface Mountain": { lat: 44.3653, lng: -73.9036, location: "New York, USA" },
+  "Whiteface": { lat: 44.3653, lng: -73.9036, location: "New York, USA" },
+  "Gore Mountain": { lat: 43.6717, lng: -74.0081, location: "New York, USA" },
+  "Hunter Mountain": { lat: 42.2017, lng: -74.2258, location: "New York, USA" },
+  "Windham Mountain": { lat: 42.2961, lng: -74.2572, location: "New York, USA" },
+  "Holiday Valley": { lat: 42.2667, lng: -78.6708, location: "New York, USA" },
+  "Bristol Mountain": { lat: 42.7403, lng: -77.4003, location: "New York, USA" },
+  "Greek Peak": { lat: 42.5131, lng: -76.1472, location: "New York, USA" },
+  "Belleayre": { lat: 42.1303, lng: -74.5072, location: "New York, USA" },
+  "Camelback": { lat: 41.0517, lng: -75.3567, location: "Pennsylvania, USA" },
+  "Camelback Resort": { lat: 41.0517, lng: -75.3567, location: "Pennsylvania, USA" },
+  "Blue Mountain": { lat: 40.8256, lng: -75.5139, location: "Pennsylvania, USA" },
+  "Jack Frost": { lat: 41.1067, lng: -75.6261, location: "Pennsylvania, USA" },
+  "Elk Mountain": { lat: 41.6889, lng: -75.5756, location: "Pennsylvania, USA" },
+  "Seven Springs": { lat: 40.0231, lng: -79.2978, location: "Pennsylvania, USA" },
+  "Snowshoe Mountain": { lat: 38.4078, lng: -79.9942, location: "West Virginia, USA" },
+  "Snowshoe": { lat: 38.4078, lng: -79.9942, location: "West Virginia, USA" },
+  "Canaan Valley": { lat: 38.9978, lng: -79.4478, location: "West Virginia, USA" },
+  "Wintergreen Resort": { lat: 37.9364, lng: -78.9403, location: "Virginia, USA" },
+  "Massanutten": { lat: 38.4069, lng: -78.7378, location: "Virginia, USA" },
+  // ── MIDWEST ──
+  "Boyne Mountain": { lat: 45.1636, lng: -84.9328, location: "Michigan, USA" },
+  "Boyne Highlands": { lat: 45.4636, lng: -84.9183, location: "Michigan, USA" },
+  "Crystal Mountain MI": { lat: 44.5203, lng: -86.2536, location: "Michigan, USA" },
+  "Nubs Nob": { lat: 45.4697, lng: -84.9072, location: "Michigan, USA" },
+  "Granite Peak": { lat: 44.9447, lng: -89.6828, location: "Wisconsin, USA" },
+  "Devil's Head": { lat: 43.3953, lng: -89.7019, location: "Wisconsin, USA" },
+  "Cascade Mountain": { lat: 43.5731, lng: -89.6606, location: "Wisconsin, USA" },
+  "Lutsen Mountains": { lat: 47.6639, lng: -90.7106, location: "Minnesota, USA" },
+  "Spirit Mountain": { lat: 46.7186, lng: -92.2175, location: "Minnesota, USA" },
+  "Giants Ridge": { lat: 47.6006, lng: -92.4608, location: "Minnesota, USA" },
+  "Afton Alps": { lat: 44.8567, lng: -92.7883, location: "Minnesota, USA" },
+  "Wild Mountain": { lat: 45.4581, lng: -92.7394, location: "Minnesota, USA" },
+  "Buck Hill": { lat: 44.7261, lng: -93.2908, location: "Minnesota, USA" },
+  "Hidden Valley": { lat: 44.4558, lng: -91.0781, location: "Minnesota, USA" },
+  "Welch Village": { lat: 44.5644, lng: -92.7256, location: "Minnesota, USA" },
+  // ── NEW MEXICO / ARIZONA ──
+  "Taos Ski Valley": { lat: 36.5969, lng: -105.4544, location: "New Mexico, USA" },
+  "Taos": { lat: 36.5969, lng: -105.4544, location: "New Mexico, USA" },
+  "Ski Santa Fe": { lat: 35.7953, lng: -105.8022, location: "New Mexico, USA" },
+  "Angel Fire": { lat: 36.3928, lng: -105.2847, location: "New Mexico, USA" },
+  "Red River": { lat: 36.7064, lng: -105.4078, location: "New Mexico, USA" },
+  "Sipapu": { lat: 36.0969, lng: -105.5508, location: "New Mexico, USA" },
+  "Arizona Snowbowl": { lat: 35.3306, lng: -111.7078, location: "Arizona, USA" },
+  "Sunrise Park Resort": { lat: 33.9708, lng: -109.5600, location: "Arizona, USA" },
+  "Mt. Lemmon Ski Valley": { lat: 32.4433, lng: -110.7817, location: "Arizona, USA" },
+  // ── ALASKA ──
+  "Alyeska": { lat: 60.9697, lng: -149.0978, location: "Alaska, USA" },
+  "Alyeska Resort": { lat: 60.9697, lng: -149.0978, location: "Alaska, USA" },
+  "Eaglecrest": { lat: 58.3114, lng: -134.5208, location: "Alaska, USA" },
+  // ── BRITISH COLUMBIA ──
+  "Big White Ski Resort": { lat: 49.7256, lng: -118.9314, location: "British Columbia, Canada" },
+  "Big White": { lat: 49.7256, lng: -118.9314, location: "British Columbia, Canada" },
+  "Revelstoke Mountain Resort": { lat: 50.9577, lng: -118.1649, location: "British Columbia, Canada" },
+  "Revelstoke": { lat: 50.9577, lng: -118.1649, location: "British Columbia, Canada" },
+  "Whistler Blackcomb": { lat: 50.1163, lng: -122.9574, location: "British Columbia, Canada" },
+  "Whistler": { lat: 50.1163, lng: -122.9574, location: "British Columbia, Canada" },
+  "Sun Peaks": { lat: 50.8830, lng: -119.9019, location: "British Columbia, Canada" },
+  "Sun Peaks Resort": { lat: 50.8830, lng: -119.9019, location: "British Columbia, Canada" },
+  "Silver Star": { lat: 50.3553, lng: -119.0611, location: "British Columbia, Canada" },
+  "Silver Star Mountain Resort": { lat: 50.3553, lng: -119.0611, location: "British Columbia, Canada" },
+  "Kicking Horse": { lat: 51.2975, lng: -117.0478, location: "British Columbia, Canada" },
+  "Kicking Horse Mountain Resort": { lat: 51.2975, lng: -117.0478, location: "British Columbia, Canada" },
+  "Fernie Alpine Resort": { lat: 49.4628, lng: -115.0867, location: "British Columbia, Canada" },
+  "Fernie": { lat: 49.4628, lng: -115.0867, location: "British Columbia, Canada" },
+  "Panorama": { lat: 50.4600, lng: -116.2389, location: "British Columbia, Canada" },
+  "Panorama Mountain Resort": { lat: 50.4600, lng: -116.2389, location: "British Columbia, Canada" },
+  "Red Mountain": { lat: 49.1047, lng: -117.8306, location: "British Columbia, Canada" },
+  "Red Mountain Resort": { lat: 49.1047, lng: -117.8306, location: "British Columbia, Canada" },
+  "Apex Mountain Resort": { lat: 49.3953, lng: -119.9017, location: "British Columbia, Canada" },
+  "Whitewater Ski Resort": { lat: 49.3008, lng: -117.1461, location: "British Columbia, Canada" },
+  "Whitewater": { lat: 49.3008, lng: -117.1461, location: "British Columbia, Canada" },
+  "Mount Washington": { lat: 49.7439, lng: -125.3064, location: "British Columbia, Canada" },
+  "Mount Washington Alpine Resort": { lat: 49.7439, lng: -125.3064, location: "British Columbia, Canada" },
+  "Cypress Mountain": { lat: 49.3967, lng: -123.2044, location: "British Columbia, Canada" },
+  "Grouse Mountain": { lat: 49.3808, lng: -123.0828, location: "British Columbia, Canada" },
+  "Seymour Mountain": { lat: 49.3678, lng: -122.9478, location: "British Columbia, Canada" },
+  "Mt. Seymour": { lat: 49.3678, lng: -122.9478, location: "British Columbia, Canada" },
+  "Sasquatch Mountain Resort": { lat: 49.3578, lng: -121.9428, location: "British Columbia, Canada" },
+  "Manning Park": { lat: 49.0636, lng: -120.8197, location: "British Columbia, Canada" },
+  "Hudson Bay Mountain": { lat: 54.7728, lng: -127.2397, location: "British Columbia, Canada" },
+  "Shames Mountain": { lat: 54.5217, lng: -128.8122, location: "British Columbia, Canada" },
+  "Troll Resort": { lat: 52.9553, lng: -122.4928, location: "British Columbia, Canada" },
+  // ── ALBERTA ──
+  "Lake Louise": { lat: 51.4414, lng: -116.1528, location: "Alberta, Canada" },
+  "Lake Louise Ski Resort": { lat: 51.4414, lng: -116.1528, location: "Alberta, Canada" },
+  "Sunshine Village": { lat: 51.0714, lng: -115.7722, location: "Alberta, Canada" },
+  "Mt. Norquay": { lat: 51.2053, lng: -115.6003, location: "Alberta, Canada" },
+  "Norquay": { lat: 51.2053, lng: -115.6003, location: "Alberta, Canada" },
+  "Nakiska": { lat: 50.9428, lng: -115.1528, location: "Alberta, Canada" },
+  "Castle Mountain": { lat: 49.3178, lng: -114.4078, location: "Alberta, Canada" },
+  "Castle Mountain Resort": { lat: 49.3178, lng: -114.4078, location: "Alberta, Canada" },
+  "Marmot Basin": { lat: 52.8019, lng: -118.0833, location: "Alberta, Canada" },
+  "Canyon Ski Resort": { lat: 52.3467, lng: -114.0667, location: "Alberta, Canada" },
+  // ── ONTARIO ──
+  "Blue Mountain": { lat: 44.5017, lng: -80.3164, location: "Ontario, Canada" },
+  "Blue Mountain Resort": { lat: 44.5017, lng: -80.3164, location: "Ontario, Canada" },
+  "Mount St. Louis Moonstone": { lat: 44.5500, lng: -79.5833, location: "Ontario, Canada" },
+  "Horseshoe Resort": { lat: 44.4792, lng: -79.6333, location: "Ontario, Canada" },
+  "Searchmont": { lat: 46.7333, lng: -83.9833, location: "Ontario, Canada" },
+  "Calabogie Peaks": { lat: 45.2833, lng: -76.7667, location: "Ontario, Canada" },
+  "Loch Lomond": { lat: 48.3200, lng: -89.1400, location: "Ontario, Canada" },
+  "Sir Sam's": { lat: 44.9667, lng: -78.5500, location: "Ontario, Canada" },
+  "Hidden Valley Highlands": { lat: 45.2833, lng: -79.0667, location: "Ontario, Canada" },
+  "Glen Eden": { lat: 43.4167, lng: -79.9500, location: "Ontario, Canada" },
+  "Devil's Elbow": { lat: 44.4333, lng: -78.6167, location: "Ontario, Canada" },
+  // ── QUEBEC ──
+  "Mont Tremblant": { lat: 46.2115, lng: -74.5855, location: "Quebec, Canada" },
+  "Tremblant": { lat: 46.2115, lng: -74.5855, location: "Quebec, Canada" },
+  "Mont-Sainte-Anne": { lat: 47.0764, lng: -70.9039, location: "Quebec, Canada" },
+  "Mont Sainte-Anne": { lat: 47.0764, lng: -70.9039, location: "Quebec, Canada" },
+  "Le Massif": { lat: 47.2658, lng: -70.6256, location: "Quebec, Canada" },
+  "Le Massif de Charlevoix": { lat: 47.2658, lng: -70.6256, location: "Quebec, Canada" },
+  "Stoneham": { lat: 47.0172, lng: -71.3542, location: "Quebec, Canada" },
+  "Mont Ste. Marie": { lat: 46.2553, lng: -75.9531, location: "Quebec, Canada" },
+  "Mont Ste Marie": { lat: 46.2553, lng: -75.9531, location: "Quebec, Canada" },
+  "Mont Ste-Marie": { lat: 46.2553, lng: -75.9531, location: "Quebec, Canada" },
+  "Camp Fortune": { lat: 45.5081, lng: -75.8483, location: "Quebec, Canada" },
+  "Camp Fortune Ski Resort": { lat: 45.5081, lng: -75.8483, location: "Quebec, Canada" },
+  "Edelweiss Valley": { lat: 45.5478, lng: -75.8150, location: "Quebec, Canada" },
+  "Edelweiss": { lat: 45.5478, lng: -75.8150, location: "Quebec, Canada" },
+  "Bromont": { lat: 45.2833, lng: -72.6333, location: "Quebec, Canada" },
+  "Mont Orford": { lat: 45.3264, lng: -72.2269, location: "Quebec, Canada" },
+  "Owl's Head": { lat: 45.1403, lng: -72.2328, location: "Quebec, Canada" },
+  "Mont Sutton": { lat: 45.1042, lng: -72.5608, location: "Quebec, Canada" },
+  "Jay Peak Resort": { lat: 44.9272, lng: -72.5286, location: "Vermont, USA" },
+  "Sommet Saint-Sauveur": { lat: 45.9203, lng: -74.1783, location: "Quebec, Canada" },
+  "Mont Saint-Sauveur": { lat: 45.9203, lng: -74.1783, location: "Quebec, Canada" },
+  "Mont Blanc": { lat: 46.1833, lng: -74.5833, location: "Quebec, Canada" },
+  "Mont Habitant": { lat: 45.9500, lng: -74.1667, location: "Quebec, Canada" },
+  "Ski Garceau": { lat: 46.3167, lng: -74.1333, location: "Quebec, Canada" },
+  "Ski Montcalm": { lat: 46.2833, lng: -73.6000, location: "Quebec, Canada" },
+  "Mont Gleason": { lat: 46.0833, lng: -74.0833, location: "Quebec, Canada" },
+  "Vallée Bleue": { lat: 45.9333, lng: -74.0833, location: "Quebec, Canada" },
+  "Ski Morin Heights": { lat: 45.9333, lng: -74.2500, location: "Quebec, Canada" },
+  "Mont Olympia": { lat: 45.9333, lng: -73.9833, location: "Quebec, Canada" },
+  // ── ATLANTIC CANADA ──
+  "Crabbe Mountain": { lat: 46.0803, lng: -67.0581, location: "New Brunswick, Canada" },
+  "Poley Mountain": { lat: 45.6547, lng: -65.7353, location: "New Brunswick, Canada" },
+  "Sugarloaf Provincial Park": { lat: 47.8619, lng: -66.9194, location: "New Brunswick, Canada" },
+  "Ski Wentworth": { lat: 45.5500, lng: -63.5667, location: "Nova Scotia, Canada" },
+  "Ski Martock": { lat: 44.9333, lng: -64.1833, location: "Nova Scotia, Canada" },
+  "Marble Mountain": { lat: 48.8269, lng: -57.8403, location: "Newfoundland, Canada" },
+  "White Hills": { lat: 48.5253, lng: -56.0269, location: "Newfoundland, Canada" },
+  // ── WESTERN CANADA ──
+  "Ski Wapiti": { lat: 55.1333, lng: -118.8000, location: "Alberta, Canada" },
+  "Tawatinaw Valley": { lat: 54.3833, lng: -113.5667, location: "Alberta, Canada" },
+  "Rabbit Hill": { lat: 53.3833, lng: -113.5500, location: "Alberta, Canada" },
+  "Mission Ridge Winter Park": { lat: 50.4833, lng: -105.3500, location: "Saskatchewan, Canada" },
+  "Table Mountain": { lat: 52.6167, lng: -104.9167, location: "Saskatchewan, Canada" },
+  "Ski Valley": { lat: 52.2167, lng: -108.4833, location: "Saskatchewan, Canada" },
+  "Holiday Mountain": { lat: 49.1833, lng: -98.9833, location: "Manitoba, Canada" },
+  "Asessippi": { lat: 51.1500, lng: -101.5667, location: "Manitoba, Canada" },
+  "Stony Mountain": { lat: 50.1167, lng: -97.1833, location: "Manitoba, Canada" },
+  "Spring Hill": { lat: 50.0833, lng: -97.0333, location: "Manitoba, Canada" },
+  // ── ADDITIONAL USA ──
+  "Snowshoe Mountain": { lat: 38.4078, lng: -79.9942, location: "West Virginia, USA" },
+  "Beech Mountain": { lat: 36.1828, lng: -81.8803, location: "North Carolina, USA" },
+  "Sugar Mountain": { lat: 36.1194, lng: -81.8714, location: "North Carolina, USA" },
+  "Appalachian Ski Mountain": { lat: 36.0953, lng: -81.6267, location: "North Carolina, USA" },
+  "Cataloochee": { lat: 35.4850, lng: -83.0822, location: "North Carolina, USA" },
+  "Ober Gatlinburg": { lat: 35.7086, lng: -83.5186, location: "Tennessee, USA" },
+  "Wisp Resort": { lat: 39.5567, lng: -79.3700, location: "Maryland, USA" },
+  "Timberline Mountain": { lat: 39.0050, lng: -79.4264, location: "West Virginia, USA" },
+  "Terry Peak": { lat: 44.3692, lng: -103.7094, location: "South Dakota, USA" },
+  "Showdown Montana": { lat: 46.8372, lng: -110.7275, location: "Montana, USA" },
+  "Discovery Ski Area": { lat: 46.2478, lng: -113.2350, location: "Montana, USA" },
+  "Lost Trail": { lat: 45.6928, lng: -113.9539, location: "Montana, USA" },
+  "Snowbowl": { lat: 46.9325, lng: -113.8781, location: "Montana, USA" },
+  "Montana Snowbowl": { lat: 46.9325, lng: -113.8781, location: "Montana, USA" },
+  "Teton Pass Ski Resort": { lat: 47.0272, lng: -110.1239, location: "Montana, USA" },
+  "Maverick Mountain": { lat: 45.4631, lng: -113.0994, location: "Montana, USA" },
+  "Hoodoo Ski Area": { lat: 44.4064, lng: -121.8778, location: "Oregon, USA" },
+  "Anthony Lakes": { lat: 44.9653, lng: -118.2328, location: "Oregon, USA" },
+  "Ski Bluewood": { lat: 46.0808, lng: -117.8364, location: "Washington, USA" },
+  "49 Degrees North": { lat: 48.2986, lng: -117.5650, location: "Washington, USA" },
+  "Mt. Spokane": { lat: 47.9242, lng: -117.1036, location: "Washington, USA" },
+  "Loup Loup": { lat: 48.3908, lng: -119.9108, location: "Washington, USA" },
+  "Lee Canyon": { lat: 36.2978, lng: -115.6800, location: "Nevada, USA" },
+  "Mt. Rose": { lat: 39.3167, lng: -119.8836, location: "Nevada, USA" },
+  "Diamond Peak": { lat: 39.2539, lng: -119.9214, location: "Nevada, USA" },
+  "Homewood": { lat: 39.0853, lng: -120.1606, location: "California, USA" },
+  "Soda Springs": { lat: 39.3186, lng: -120.3789, location: "California, USA" },
+  "Tahoe Donner": { lat: 39.3572, lng: -120.3256, location: "California, USA" },
+  "Donner Ski Ranch": { lat: 39.3178, lng: -120.3300, location: "California, USA" },
+  "Squaw Creek": { lat: 39.1822, lng: -120.2333, location: "California, USA" },
+  "Badger Pass": { lat: 37.6628, lng: -119.6631, location: "California, USA" },
+  "Mount Shasta": { lat: 41.3236, lng: -122.3167, location: "California, USA" },
+  "Mt. Shasta Ski Park": { lat: 41.3236, lng: -122.3167, location: "California, USA" },
 };
-function ps(p) { return PS[p] || { accent: "#94a3b8", bg: "#131620" }; }
-const T = { bg:"#0B0D12",s1:"#131620",s2:"#1a1e2c",t1:"#EAEBF0",t2:"#A0A5B8",t3:"#6B7089",bd:"rgba(255,255,255,0.07)",bdH:"rgba(255,255,255,0.14)",foc:"rgba(120,170,255,0.5)",dng:"#ef4444",dngD:"rgba(239,68,68,0.25)",r:10,rs:6,mono:"'SF Mono','Fira Code','Consolas',monospace",sans:"-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI','Helvetica Neue',sans-serif",serif:"'Georgia','Charter','Palatino',serif" };
 
-function shuffle(a) { const b = [...a]; for (let i = b.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; }
-function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function yesterdayStr() { const d = new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function hasNotes(e) { return typeof e?.notes === "string" && e.notes.trim().length > 0; }
 
-// ─── Swipe hook ──
-function useSwipe(onLeft, onRight) {
-  const startX = useRef(null);
-  const startY = useRef(null);
-  const onTouchStart = useCallback(e => { startX.current = e.touches[0].clientX; startY.current = e.touches[0].clientY; }, []);
-  const onTouchEnd = useCallback(e => {
-    if (startX.current === null) return;
-    const dx = e.changedTouches[0].clientX - startX.current;
-    const dy = e.changedTouches[0].clientY - startY.current;
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) { if (dx < 0) onLeft(); else onRight(); }
-    startX.current = null;
-  }, [onLeft, onRight]);
-  const onClick = useCallback(e => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    if (x > rect.width * 0.65) onLeft();
-    else if (x < rect.width * 0.35) onRight();
-  }, [onLeft, onRight]);
-  return { onTouchStart, onTouchEnd, onClick };
+function getSeason(dateStr) {
+  const d = new Date(dateStr);
+  const month = d.getMonth();
+  const year = d.getFullYear();
+  if (month >= 10) return `${year}/${year + 1}`;
+  if (month <= 3) return `${year - 1}/${year}`;
+  return `${year}/${year + 1}`;
 }
 
-// ─── Fullscreen Quote ──
-function FullQuote({ entry, fadeKey, showTitle = true, immersive = false, animStyle = "fadeIn" }) {
-  if (!entry) return null;
-  const lines = entry.content.split("\n");
-  let paraIdx = 0;
+function formatDate(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function generateId() {
+  return "s" + Date.now() + Math.random().toString(36).slice(2, 6);
+}
+
+// ── Stat Card ──
+function StatCard({ label, value, unit, icon, accent }) {
   return (
-    <div key={fadeKey} style={{
-      minHeight: immersive ? "auto" : "70vh",
-      display: "flex", flexDirection: "column", justifyContent: "center",
-      paddingTop: immersive ? 0 : 40, paddingBottom: immersive ? 0 : 40,
-      animation: `${animStyle} 0.24s cubic-bezier(0.25,0.1,0.25,1)`,
+    <div style={{
+      background: "rgba(255,255,255,0.06)",
+      backdropFilter: "blur(20px)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 16,
+      padding: "24px 20px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 6,
+      position: "relative",
+      overflow: "hidden",
     }}>
-      {showTitle && (
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: T.t1, lineHeight: 1.35, letterSpacing: -0.3, marginBottom: 28 }}>
-          {entry.title}
-        </h1>
-      )}
-      <div style={immersive ? {} : { borderLeft: `2px solid ${ps(entry.pillar).accent}25`, paddingLeft: 24 }}>
-        {lines.map((ln, i) => {
-          const empty = !ln.trim();
-          if (!empty) paraIdx++;
-          const opac = immersive
-            ? (empty ? 1 : paraIdx === 1 ? 0.97 : 0.92)
-            : (empty ? 1 : 0.9);
-          return (
-            <p key={i} style={{
-              fontSize: immersive ? 17 : 16,
-              fontFamily: T.serif,
-              color: empty ? "transparent" : (immersive ? "rgba(255,255,255," + opac + ")" : T.t1),
-              lineHeight: immersive ? 1.74 : 1.9,
-              letterSpacing: immersive ? 0.15 : 0,
-              margin: empty ? "0 0 8px 0" : (immersive ? "0 0 20px 0" : "0 0 16px 0"),
-              opacity: immersive ? 1 : opac,
-            }}>{ln || "\u00A0"}</p>
-          );
-        })}
+      <div style={{
+        position: "absolute",
+        top: -20,
+        right: -10,
+        fontSize: 64,
+        opacity: 0.06,
+        lineHeight: 1,
+      }}>{icon}</div>
+      <span style={{
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: "0.1em",
+        textTransform: "uppercase",
+        color: accent || "#8ec5fc",
+        fontFamily: "'DM Sans', sans-serif",
+      }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+        <span style={{
+          fontSize: 32,
+          fontWeight: 700,
+          color: "#fff",
+          fontFamily: "'Space Mono', monospace",
+          letterSpacing: "-0.02em",
+        }}>{value}</span>
+        {unit && <span style={{
+          fontSize: 13,
+          color: "rgba(255,255,255,0.45)",
+          fontWeight: 500,
+          fontFamily: "'DM Sans', sans-serif",
+        }}>{unit}</span>}
       </div>
-      {hasNotes(entry) && (
-        <div style={{ marginTop: immersive ? 36 : 28, paddingTop: immersive ? 28 : 24 }}>
-          <div style={{ height: 1, background: "rgba(255,255,255,0.05)", marginBottom: 20 }} />
-          <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: "rgba(234,235,240,0.45)", marginBottom: 14 }}>Notes</div>
-          <div>
-            {entry.notes.trim().split("\n").map((ln, i) => (
-              <p key={i} style={{ fontSize: 15, fontFamily: T.serif, color: immersive ? "rgba(255,255,255,0.62)" : "rgba(234,235,240,0.65)", lineHeight: 1.85, margin: ln.trim() ? "0 0 14px 0" : "0 0 6px 0" }}>
-                {ln || "\u00A0"}
-              </p>
-            ))}
+    </div>
+  );
+}
+
+// ── Session Row (desktop) / Card (mobile) ──
+function SessionRow({ session, index, onEdit, onDelete }) {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
+  const btnStyle = { background: "none", border: "none", cursor: "pointer", padding: 4, fontSize: 14, opacity: 0.4 };
+
+  if (isMobile) {
+    return (
+      <div style={{
+        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: 12, padding: "14px 16px", marginBottom: 8,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>{session.resort}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono', monospace" }}>{formatDate(session.date)}</span>
+            <button onClick={() => onEdit(session)} style={btnStyle} title="Edit">✏️</button>
+            <button onClick={() => onDelete(session)} style={btnStyle} title="Delete">🗑️</button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Layout ──
-const FOOTER_H = 64;
-
-function DynCard({ children, className, style = {} }) {
-  const ref = useRef(null);
-  const [offsetY, setOffsetY] = useState(0);
-  useEffect(() => {
-    function calc() {
-      if (!ref.current) return;
-      const vh = window.innerHeight;
-      const ch = ref.current.offsetHeight;
-      if (ch >= vh) { setOffsetY(0); }
-      else { const avail = vh - ch - FOOTER_H; setOffsetY(Math.min(140, Math.max(0, avail * 0.28))); }
-    }
-    calc();
-    const t = setTimeout(calc, 80);
-    window.addEventListener("resize", calc);
-    return () => { clearTimeout(t); window.removeEventListener("resize", calc); };
-  });
-  return (
-    <div ref={ref} className={className} style={{ ...style, transform: `translateY(${offsetY}px)`, transition: "transform 0.28s ease-in-out" }}>
-      {children}
-    </div>
-  );
-}
-
-function FooterBar({ mode, onNext, onFlip, onExit, flipDisabled, streak }) {
-  const base = {
-    position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, height: FOOTER_H,
-    background: "rgba(28,30,38,0.92)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-    borderTop: "1px solid rgba(255,255,255,0.06)",
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "0 28px", paddingBottom: "env(safe-area-inset-bottom, 0px)",
-  };
-  const btn = { background: "none", border: "none", cursor: "pointer", padding: "8px 12px", fontSize: 14, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, transition: "color 0.15s ease, transform 0.1s ease" };
-  const press = e => e.currentTarget.style.transform = "scale(0.97)";
-  const unpress = e => e.currentTarget.style.transform = "scale(1)";
-  const streakEl = streak > 0 ? (
-    <span style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: "rgba(255,255,255,0.35)", letterSpacing: 0.5 }}>Streak: {streak}</span>
-  ) : <span />;
-
-  if (mode === "today") {
-    return (
-      <div style={base}>
-        {streakEl}
-        <button onClick={onNext} onMouseDown={press} onMouseUp={unpress} onMouseLeave={unpress}
-          style={{ ...btn, color: "rgba(255,255,255,0.55)" }}
-          onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.85)"}>Next ›</button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          {[
+            ["Runs", session.runs],
+            ["Vert", `${session.vertical.toLocaleString()}m`],
+            ["Dist", `${session.distance}km`],
+            ["Speed", session.topSpeed ? `${session.topSpeed}km/h` : "—"],
+          ].map(([label, val]) => (
+            <div key={label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+              <div style={{ fontSize: 13, color: "#fff", fontWeight: 500, fontFamily: "'Space Mono', monospace" }}>{val}</div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
+
   return (
-    <div style={base}>
-      <button onClick={onExit} onMouseDown={press} onMouseUp={unpress} onMouseLeave={e => { unpress(e); e.currentTarget.style.color = "rgba(255,255,255,0.45)"; }}
-        style={{ ...btn, color: "rgba(255,255,255,0.45)", fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase" }}
-        onMouseEnter={e => e.currentTarget.style.color = "rgba(255,255,255,0.75)"}>Exit Review</button>
-      <button onClick={onFlip} disabled={flipDisabled} onMouseDown={press} onMouseUp={unpress} onMouseLeave={e => { unpress(e); e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}
-        style={{ ...btn, color: "rgba(255,255,255,0.55)", opacity: flipDisabled ? 0.4 : 1, cursor: flipDisabled ? "default" : "pointer" }}
-        onMouseEnter={e => { if (!flipDisabled) e.currentTarget.style.color = "rgba(255,255,255,0.85)"; }}>Flip →</button>
+    <div style={{
+      display: "grid", gridTemplateColumns: "1fr 1.4fr repeat(4, 1fr) auto",
+      alignItems: "center", padding: "14px 16px",
+      background: index % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent",
+      borderRadius: 8, fontSize: 13, color: "rgba(255,255,255,0.75)",
+      fontFamily: "'DM Sans', sans-serif", gap: 8,
+    }}>
+      <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{formatDate(session.date)}</span>
+      <span style={{ color: "#fff", fontWeight: 500 }}>{session.resort}</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.runs}</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.vertical.toLocaleString()}m</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.distance}km</span>
+      <span style={{ textAlign: "center", fontFamily: "'Space Mono', monospace" }}>{session.topSpeed ? `${session.topSpeed}km/h` : "—"}</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button onClick={() => onEdit(session)} style={btnStyle} title="Edit">✏️</button>
+        <button onClick={() => onDelete(session)} style={btnStyle} title="Delete">🗑️</button>
+      </div>
     </div>
   );
 }
 
-function Overlay({ show, items }) {
+function SessionsHeader() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  if (isMobile) return null;
   return (
     <div style={{
-      position: "fixed", bottom: 0, left: 0, right: 0,
-      background: "linear-gradient(transparent, rgba(11,13,18,0.95) 40%)",
-      padding: "60px 0 36px", display: "flex", justifyContent: "center", gap: 24,
-      opacity: show ? 1 : 0, pointerEvents: show ? "auto" : "none", transition: "opacity 0.3s ease", zIndex: 50,
+      display: "grid", gridTemplateColumns: "1fr 1.4fr repeat(4, 1fr) auto",
+      padding: "8px 16px 12px", fontSize: 10, textTransform: "uppercase",
+      letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)", fontWeight: 600, gap: 8,
     }}>
-      {items.map(({ label, onClick }, i) => (
-        <button key={i} onClick={onClick} style={{
-          background: "none", border: `1px solid ${T.bdH}`, borderRadius: T.rs,
-          padding: "8px 20px", color: T.t2, fontSize: 12, fontFamily: T.mono,
-          fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s ease",
-        }}
-          onMouseEnter={e => { e.currentTarget.style.color = T.t1; e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)"; }}
-          onMouseLeave={e => { e.currentTarget.style.color = T.t2; e.currentTarget.style.borderColor = T.bdH; }}
-        >{label}</button>
+      <span>Date</span><span>Resort</span>
+      <span style={{ textAlign: "center" }}>Runs</span>
+      <span style={{ textAlign: "center" }}>Vertical</span>
+      <span style={{ textAlign: "center" }}>Distance</span>
+      <span style={{ textAlign: "center" }}>Top Speed</span>
+      <span></span>
+    </div>
+  );
+}
+
+// ── Edit Session Modal ──
+function EditModal({ session, onClose, onSave }) {
+  const [date, setDate] = useState(session.date || "");
+  const [resort, setResort] = useState(session.resort || "");
+  const [runs, setRuns] = useState(String(session.runs || ""));
+  const [vertical, setVertical] = useState(String(session.vertical || ""));
+  const [distance, setDistance] = useState(String(session.distance || ""));
+  const [topSpeed, setTopSpeed] = useState(String(session.topSpeed || ""));
+  const [totalTime, setTotalTime] = useState(session.totalTime || "");
+  const [tallestRun, setTallestRun] = useState(String(session.tallestRun || ""));
+  const [longestRun, setLongestRun] = useState(String(session.longestRun || ""));
+  const [peakAlt, setPeakAlt] = useState(String(session.peakAlt || ""));
+  const [error, setError] = useState(null);
+
+  const save = () => {
+    if (!date || !resort || !runs || !vertical) { setError("Date, resort, runs, and vertical are required."); return; }
+    const updated = {
+      ...session, date, resort,
+      runs: parseInt(runs) || 0, vertical: parseInt(vertical) || 0,
+      distance: parseFloat(distance) || 0, topSpeed: parseFloat(topSpeed) || null,
+      totalTime: totalTime || null, tallestRun: parseInt(tallestRun) || null,
+      longestRun: parseFloat(longestRun) || null, peakAlt: parseInt(peakAlt) || null,
+    };
+    if (updated.topSpeed && updated.topSpeed > 100) updated.topSpeed = null;
+    onSave(updated);
+    onClose();
+  };
+
+  const inp = { width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#fff", fontSize: 14, fontFamily: "'Space Mono', monospace", outline: "none" };
+  const lbl = { fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: "'DM Sans', sans-serif", marginBottom: 4, display: "block" };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(10px)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#1a1f2e", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20, padding: "24px 20px", maxWidth: 440, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Edit Session</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginBottom: 16 }}>
+          <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Date *</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inp} /></div>
+          <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Resort *</label><input type="text" value={resort} onChange={(e) => setResort(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Runs *</label><input type="number" value={runs} onChange={(e) => setRuns(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Vertical (m) *</label><input type="number" value={vertical} onChange={(e) => setVertical(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Distance (km)</label><input type="number" step="0.1" value={distance} onChange={(e) => setDistance(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Top Speed (km/h)</label><input type="number" step="0.1" value={topSpeed} onChange={(e) => setTopSpeed(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Total Time</label><input type="text" value={totalTime} onChange={(e) => setTotalTime(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Peak Alt (m)</label><input type="number" value={peakAlt} onChange={(e) => setPeakAlt(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Tallest Run (m)</label><input type="number" value={tallestRun} onChange={(e) => setTallestRun(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Longest Run (km)</label><input type="number" step="0.1" value={longestRun} onChange={(e) => setLongestRun(e.target.value)} style={inp} /></div>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, color: "#ef4444", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>{error}</div>
+        )}
+
+        <button onClick={save} style={{
+          width: "100%", padding: "14px", background: "linear-gradient(135deg, #34d399, #10b981)",
+          border: "none", borderRadius: 12, color: "#fff", fontSize: 15,
+          fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+        }}>Save Changes</button>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Upload Modal ──
+function UploadModal({ onClose, onSessionAdded, sessions }) {
+  const [images, setImages] = useState([]); // [{src, file}]
+  const [results, setResults] = useState([]); // [{status, data, error, src}]
+  const [processing, setProcessing] = useState(false);
+  const [currentIdx, setCurrentIdx] = useState(-1);
+  const [done, setDone] = useState(false);
+  const [editingIdx, setEditingIdx] = useState(-1);
+  const fileRef = useRef();
+
+  const handleFiles = (fileList) => {
+    const files = Array.from(fileList).filter(f => f.type.startsWith("image/")).slice(0, 50);
+    if (!files.length) return;
+    const newImages = [];
+    let loaded = 0;
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        newImages.push({ src: reader.result, name: file.name });
+        loaded++;
+        if (loaded === files.length) {
+          setImages(prev => [...prev, ...newImages]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        handleFiles([item.getAsFile()]);
+        return;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [handlePaste]);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
+  };
+
+  const removeImage = (idx) => {
+    setImages(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const parseSlopes = (text) => {
+    const lines = text.replace(/\r/g, "").split("\n").map(s => s.trim()).filter(Boolean);
+    const full = lines.join(" ");
+    console.log("OCR text:", full);
+
+    let date = null;
+    const dateMatch = full.match(/([A-Z][a-z]{2})\s+(\d{1,2}),?\s*(20\d{2})/i);
+    if (dateMatch) {
+      const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+      const m = months[dateMatch[1].toLowerCase()];
+      const d = dateMatch[2].padStart(2, "0");
+      if (m) date = `${dateMatch[3]}-${m}-${d}`;
+    }
+
+    let resort = null;
+    const resortMatch = full.match(/(?:20\d{2})\s+([A-Z][A-Za-z\s.']+?)(?:\s+Tracked|\s+tracked)/i);
+    if (resortMatch) resort = resortMatch[1].trim();
+    if (!resort) {
+      const r2 = full.match(/(Mont\s+Ste\.?\s*Marie|Breckenridge|Big\s+White|Revelstoke|Whistler|Tremblant|Blue\s+Mountain|Bromont|Stoneham|Le\s+Massif|Banff|Lake\s+Louise|Fernie|Kicking\s+Horse|Sun\s+Peaks|Silver\s+Star|Apex|Marmot|Panorama|Red\s+Mountain|Whitewater|Grouse|Cypress|Seymour)/i);
+      if (r2) resort = r2[1];
+    }
+
+    let runs = null;
+    const runsMatch = full.match(/(\d{1,3})\s*(?:RUNS|runs|Runs)/);
+    if (runsMatch) runs = parseInt(runsMatch[1]);
+
+    let vertical = null;
+    const vertMatch = full.match(/([\d,]+)\s*[Mm]\s*[↓⬇]?\s*(?:vertical|vert)/i) ||
+                      full.match(/(?:vertical|vert)\s*[↓⬇]?\s*([\d,]+)\s*[Mm]/i) ||
+                      full.match(/([\d,]+)\s*[Mm]\b(?!.*(?:peak|alt|tall))/i);
+    if (vertMatch) vertical = parseInt(vertMatch[1].replace(/,/g, ""));
+    if (!vertical) {
+      const allM = [...full.matchAll(/([\d,]+)\s*[Mm]\b/g)];
+      for (const m of allM) {
+        const v = parseInt(m[1].replace(/,/g, ""));
+        if (v > 100 && v < 20000) { vertical = v; break; }
+      }
+    }
+
+    let distance = null;
+    const distMatch = full.match(/([\d.]+)\s*[Kk][Mm]\s*[→⟶]?\s*(?:distance|dist)/i) ||
+                      full.match(/(?:distance|dist)\s*[→⟶]?\s*([\d.]+)\s*[Kk][Mm]/i);
+    if (distMatch) distance = parseFloat(distMatch[1]);
+    if (!distance) {
+      const allKm = [...full.matchAll(/([\d.]+)\s*[Kk][Mm]\b/g)];
+      for (const m of allKm) {
+        const v = parseFloat(m[1]);
+        if (v > 1 && v < 200) { distance = v; break; }
+      }
+    }
+
+    let topSpeed = null;
+    const speedMatch = full.match(/([\d.]+)\s*[Kk][Mm]\/[Hh]/);
+    if (speedMatch) topSpeed = parseFloat(speedMatch[1]);
+    if (!topSpeed) {
+      const s2 = full.match(/([\d.]+)\s*(?:top\s*speed)/i);
+      if (s2) topSpeed = parseFloat(s2[1]);
+    }
+
+    let totalTime = null;
+    const timeMatch = full.match(/(\d{1,2})\s*[Hh]\s*(\d{1,2})\s*[Mm][Ii][Nn]/);
+    if (timeMatch) totalTime = `${timeMatch[1]}h ${timeMatch[2]}min`;
+
+    let tallestRun = null;
+    const tallMatch = full.match(/([\d,]+)\s*[Mm]\s*[↓⬇]?\s*(?:tallest|tall)/i) ||
+                      full.match(/(?:tallest|tall)\s*(?:run)?\s*[↓⬇]?\s*([\d,]+)\s*[Mm]?/i);
+    if (tallMatch) tallestRun = parseInt(tallMatch[1].replace(/,/g, ""));
+
+    let longestRun = null;
+    const longMatch = full.match(/([\d.]+)\s*[Kk][Mm]\s*[→⟶]?\s*(?:longest|long)/i) ||
+                      full.match(/(?:longest|long)\s*(?:run)?\s*[→⟶]?\s*([\d.]+)\s*[Kk][Mm]?/i);
+    if (longMatch) longestRun = parseFloat(longMatch[1]);
+
+    let peakAlt = null;
+    const peakMatch = full.match(/([\d,]+)\s*[Mm]\s*[↑⬆▲]?\s*(?:peak|alt)/i) ||
+                      full.match(/(?:peak\s*alt)\s*[↑⬆▲]?\s*([\d,]+)\s*[Mm]?/i);
+    if (peakMatch) peakAlt = parseInt(peakMatch[1].replace(/,/g, ""));
+
+    return { date, resort, runs, vertical, distance, topSpeed, totalTime, tallestRun, longestRun, peakAlt };
+  };
+
+  const loadTesseract = async () => {
+    if (!window.Tesseract) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Failed to load OCR engine"));
+        document.head.appendChild(s);
+      });
+    }
+  };
+
+  const extractAll = async () => {
+    setProcessing(true);
+    setResults([]);
+    try {
+      await loadTesseract();
+    } catch (err) {
+      setResults([{ status: "error", error: "Failed to load OCR engine" }]);
+      setProcessing(false);
+      return;
+    }
+
+    const newResults = [];
+    for (let i = 0; i < images.length; i++) {
+      setCurrentIdx(i);
+      try {
+        const { data: { text } } = await window.Tesseract.recognize(images[i].src, "eng");
+        const parsed = parseSlopes(text);
+        if (!parsed.runs && !parsed.vertical) {
+          newResults.push({ status: "error", error: "Could not read stats", src: images[i].src });
+        } else {
+          const isDupe = sessions.some(s => s.date === parsed.date && s.resort === parsed.resort);
+          newResults.push({ status: isDupe ? "duplicate" : "success", data: parsed, src: images[i].src });
+        }
+      } catch (err) {
+        newResults.push({ status: "error", error: "OCR failed", src: images[i].src });
+      }
+      setResults([...newResults]);
+    }
+    setCurrentIdx(-1);
+    setProcessing(false);
+    setDone(true);
+  };
+
+  const saveAll = () => {
+    let saved = 0;
+    results.forEach(r => {
+      if (r.status === "success" && r.data.date && r.data.resort) {
+        const session = { ...r.data, id: generateId() };
+        if (session.topSpeed && session.topSpeed > 100) session.topSpeed = null;
+        onSessionAdded(session);
+        saved++;
+      }
+    });
+    onClose();
+  };
+
+  const successCount = results.filter(r => r.status === "success").length;
+  const dupeCount = results.filter(r => r.status === "duplicate").length;
+  const errorCount = results.filter(r => r.status === "error").length;
+
+  const updateResultField = (idx, field, value) => {
+    setResults(prev => {
+      const updated = [...prev];
+      if (updated[idx] && updated[idx].data) {
+        updated[idx] = { ...updated[idx], data: { ...updated[idx].data, [field]: value } };
+      }
+      return updated;
+    });
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.7)",
+      backdropFilter: "blur(10px)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#1a1f2e", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20, padding: "24px", maxWidth: 560, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }} onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>Add Sessions</h2>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: 8, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+
+        {/* Upload area (show when not processing and not done) */}
+        {!processing && !done && (
+          <div>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              style={{
+                border: "2px dashed rgba(142,197,252,0.3)", borderRadius: 16,
+                padding: images.length ? "24px" : "48px 24px", textAlign: "center", cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
+              <p style={{ color: "#8ec5fc", fontSize: 15, fontWeight: 600, margin: "0 0 6px", fontFamily: "'DM Sans', sans-serif" }}>
+                Paste, drop, or tap to upload
+              </p>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0, fontFamily: "'DM Sans', sans-serif" }}>
+                Select up to 50 Slopes screenshots at once
+              </p>
+              <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handleFiles(e.target.files)} />
+            </div>
+
+            {/* Image thumbnails */}
+            {images.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>
+                  {images.length} screenshot{images.length !== 1 ? "s" : ""} ready
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {images.map((img, i) => (
+                    <div key={i} style={{ position: "relative", width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                      <img src={img.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <button onClick={(e) => { e.stopPropagation(); removeImage(i); }} style={{
+                        position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.7)",
+                        border: "none", color: "#fff", width: 18, height: 18, borderRadius: 4,
+                        cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={extractAll} style={{
+                  width: "100%", padding: "14px", marginTop: 16,
+                  background: "linear-gradient(135deg, #8ec5fc, #667eea)",
+                  border: "none", borderRadius: 12, color: "#fff", fontSize: 15,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                }}>Extract Stats from {images.length} Screenshot{images.length !== 1 ? "s" : ""}</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Processing */}
+        {processing && (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ width: 28, height: 28, border: "3px solid rgba(142,197,252,0.2)", borderTopColor: "#8ec5fc", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+            <p style={{ color: "#8ec5fc", fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", margin: "0 0 8px" }}>
+              Reading screenshot {currentIdx + 1} of {images.length}...
+            </p>
+            <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 8, height: 6, overflow: "hidden", margin: "0 20px" }}>
+              <div style={{
+                background: "linear-gradient(90deg, #8ec5fc, #667eea)",
+                height: "100%", borderRadius: 8,
+                width: `${((currentIdx + 1) / images.length) * 100}%`,
+                transition: "width 0.3s",
+              }} />
+            </div>
+            {results.length > 0 && (
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", marginTop: 12 }}>
+                {results.filter(r => r.status === "success").length} extracted so far
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Results */}
+        {done && (
+          <div>
+            {/* Summary */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              {successCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#34d399", fontFamily: "'Space Mono', monospace" }}>{successCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(52,211,153,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Ready to save</div>
+                </div>
+              )}
+              {dupeCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#fbbf24", fontFamily: "'Space Mono', monospace" }}>{dupeCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(251,191,36,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Duplicates</div>
+                </div>
+              )}
+              {errorCount > 0 && (
+                <div style={{ flex: 1, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#ef4444", fontFamily: "'Space Mono', monospace" }}>{errorCount}</div>
+                  <div style={{ fontSize: 11, color: "rgba(239,68,68,0.8)", fontFamily: "'DM Sans', sans-serif" }}>Failed</div>
+                </div>
+              )}
+            </div>
+
+            {/* Result list */}
+            <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+              {results.map((r, i) => (
+                <div key={i} style={{
+                  padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8,
+                  border: `1px solid ${r.status === "success" ? "rgba(52,211,153,0.15)" : r.status === "duplicate" ? "rgba(251,191,36,0.15)" : "rgba(239,68,68,0.15)"}`,
+                }}>
+                  {editingIdx === i && r.data ? (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", marginBottom: 8 }}>
+                        {[
+                          ["date", "Date", r.data.date, "date"],
+                          ["resort", "Resort", r.data.resort, "text"],
+                          ["runs", "Runs", r.data.runs, "number"],
+                          ["vertical", "Vertical (m)", r.data.vertical, "number"],
+                          ["distance", "Dist (km)", r.data.distance, "number"],
+                          ["topSpeed", "Speed (km/h)", r.data.topSpeed, "number"],
+                          ["totalTime", "Time", r.data.totalTime, "text"],
+                          ["peakAlt", "Peak Alt (m)", r.data.peakAlt, "number"],
+                        ].map(([key, label, val, type]) => (
+                          <div key={key}>
+                            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 2 }}>{label}</div>
+                            <input type={type} value={val ?? ""} step={type === "number" ? "0.1" : undefined}
+                              onChange={(e) => {
+                                let v = e.target.value;
+                                if (type === "number") v = v === "" ? null : parseFloat(v);
+                                updateResultField(i, key, v);
+                              }}
+                              style={{ width: "100%", padding: "6px 8px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, color: "#fff", fontSize: 12, fontFamily: "'Space Mono', monospace", outline: "none" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setEditingIdx(-1)} style={{
+                        padding: "6px 16px", background: "rgba(142,197,252,0.15)", border: "1px solid rgba(142,197,252,0.3)",
+                        borderRadius: 6, color: "#8ec5fc", fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                      }}>Done Editing</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <img src={r.src} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {(r.status === "success" || r.status === "duplicate") && r.data && (
+                          <div>
+                            <div style={{ fontSize: 13, color: r.status === "duplicate" ? "#fbbf24" : "#fff", fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>
+                              {r.status === "duplicate" ? "Duplicate — " : ""}{r.data.resort || "Unknown"} — {r.data.date ? formatDate(r.data.date) : "No date"}
+                            </div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono', monospace" }}>
+                              {r.data.runs} runs · {r.data.vertical?.toLocaleString()}m · {r.data.distance}km
+                            </div>
+                          </div>
+                        )}
+                        {r.status === "error" && (
+                          <div style={{ fontSize: 13, color: "#ef4444", fontFamily: "'DM Sans', sans-serif" }}>{r.error}</div>
+                        )}
+                      </div>
+                      {r.data && (
+                        <button onClick={() => setEditingIdx(i)} style={{
+                          background: "none", border: "none", cursor: "pointer", fontSize: 14, opacity: 0.5, padding: 4,
+                        }} title="Edit">✏️</button>
+                      )}
+                      <div style={{ fontSize: 16 }}>
+                        {r.status === "success" ? "✅" : r.status === "duplicate" ? "⚠️" : "❌"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setImages([]); setResults([]); setDone(false); }} style={{
+                flex: 1, padding: "12px", background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10,
+                color: "rgba(255,255,255,0.7)", fontSize: 14, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              }}>Start Over</button>
+              {successCount > 0 && (
+                <button onClick={saveAll} style={{
+                  flex: 2, padding: "12px", background: "linear-gradient(135deg, #34d399, #10b981)",
+                  border: "none", borderRadius: 10, color: "#fff", fontSize: 14,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                }}>Save {successCount} Session{successCount !== 1 ? "s" : ""} ✓</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Personal Records ──
+function PersonalRecords({ sessions }) {
+  if (!sessions.length) return null;
+  const records = [
+    {
+      label: "Top Speed",
+      value: Math.max(...sessions.map((s) => s.topSpeed || 0)).toFixed(1),
+      unit: "km/h",
+      session: sessions.reduce((a, b) => ((a.topSpeed || 0) > (b.topSpeed || 0) ? a : b)),
+      icon: "⚡",
+    },
+    {
+      label: "Most Vertical (Day)",
+      value: Math.max(...sessions.map((s) => s.vertical)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => (a.vertical > b.vertical ? a : b)),
+      icon: "⬇",
+    },
+    {
+      label: "Most Runs (Day)",
+      value: Math.max(...sessions.map((s) => s.runs)),
+      unit: "runs",
+      session: sessions.reduce((a, b) => (a.runs > b.runs ? a : b)),
+      icon: "🔄",
+    },
+    {
+      label: "Longest Run",
+      value: Math.max(...sessions.map((s) => s.longestRun || 0)).toFixed(1),
+      unit: "km",
+      session: sessions.reduce((a, b) => ((a.longestRun || 0) > (b.longestRun || 0) ? a : b)),
+      icon: "📏",
+    },
+    {
+      label: "Tallest Run",
+      value: Math.max(...sessions.map((s) => s.tallestRun || 0)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => ((a.tallestRun || 0) > (b.tallestRun || 0) ? a : b)),
+      icon: "🏔",
+    },
+    {
+      label: "Highest Altitude",
+      value: Math.max(...sessions.map((s) => s.peakAlt || 0)).toLocaleString(),
+      unit: "m",
+      session: sessions.reduce((a, b) => ((a.peakAlt || 0) > (b.peakAlt || 0) ? a : b)),
+      icon: "🗻",
+    },
+  ];
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span style={{ color: "#fbbf24" }}>🏆</span> Personal Records
+      </h3>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+        {records.map((r) => (
+          <div key={r.label} style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 12,
+            padding: "14px 16px",
+          }}>
+            <div style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "#fbbf24",
+              fontWeight: 600,
+              marginBottom: 6,
+              fontFamily: "'DM Sans', sans-serif",
+            }}>{r.icon} {r.label}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <span style={{ fontSize: 22, fontWeight: 700, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{r.value}</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans', sans-serif" }}>{r.unit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
+              {r.session.resort} — {formatDate(r.session.date)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Season Summary ──
+function SeasonSummary({ sessions }) {
+  const seasons = {};
+  sessions.forEach((s) => {
+    const season = getSeason(s.date);
+    if (!seasons[season]) seasons[season] = [];
+    seasons[season].push(s);
+  });
+
+  const sortedSeasons = Object.keys(seasons).sort().reverse();
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span>📅</span> Seasons
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sortedSeasons.map((season) => {
+          const ss = seasons[season];
+          const totalVert = ss.reduce((a, s) => a + s.vertical, 0);
+          const totalDist = ss.reduce((a, s) => a + s.distance, 0);
+          const totalRuns = ss.reduce((a, s) => a + s.runs, 0);
+          const resorts = [...new Set(ss.map((s) => s.resort))];
+          return (
+            <div key={season} style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+              }}>
+                <span style={{
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#8ec5fc",
+                  fontFamily: "'Space Mono', monospace",
+                }}>{season}</span>
+                <span style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.4)",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{ss.length} day{ss.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Vertical</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalVert.toLocaleString()}m</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Distance</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalDist.toFixed(1)}km</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>Runs</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{totalRuns}</div>
+                </div>
+              </div>
+              <div style={{
+                marginTop: 10,
+                fontSize: 11,
+                color: "rgba(255,255,255,0.35)",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+                {resorts.join(" · ")}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Resort Breakdown ──
+function ResortBreakdown({ sessions }) {
+  const resorts = {};
+  sessions.forEach((s) => {
+    if (!resorts[s.resort]) resorts[s.resort] = [];
+    resorts[s.resort].push(s);
+  });
+
+  const sorted = Object.entries(resorts).sort((a, b) =>
+    b[1].reduce((t, s) => t + s.vertical, 0) - a[1].reduce((t, s) => t + s.vertical, 0)
+  );
+
+  return (
+    <div>
+      <h3 style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#fff",
+        fontFamily: "'DM Sans', sans-serif",
+        margin: "0 0 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span>⛷</span> Resorts
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sorted.map(([resort, ss]) => {
+          const totalVert = ss.reduce((a, s) => a + s.vertical, 0);
+          const totalDist = ss.reduce((a, s) => a + s.distance, 0);
+          const totalRuns = ss.reduce((a, s) => a + s.runs, 0);
+          const bestSpeed = Math.max(...ss.map((s) => s.topSpeed || 0));
+          return (
+            <div key={resort} style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              padding: "16px 18px",
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+              }}>
+                <span style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#fff",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{resort}</span>
+                <span style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.4)",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>{ss.length} day{ss.length !== 1 ? "s" : ""}</span>
+              </div>
+              {RESORT_COORDS[resort]?.location && (
+                <div style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.35)",
+                  fontFamily: "'DM Sans', sans-serif",
+                  marginBottom: 10,
+                  marginTop: -6,
+                }}>{RESORT_COORDS[resort].location}</div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {[
+                  ["Vertical", `${totalVert.toLocaleString()}m`],
+                  ["Distance", `${totalDist.toFixed(1)}km`],
+                  ["Runs", totalRuns],
+                  ["Top Speed", `${bestSpeed.toFixed(1)}km/h`],
+                ].map(([label, val]) => (
+                  <div key={label}>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "'Space Mono', monospace" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Interactive Resort Map (Leaflet) ──
+function ResortMap({ sessions }) {
+  const mapRef = useRef(null);
+  const leafletRef = useRef(null);
+  const resorts = {};
+  sessions.forEach((s) => {
+    const key = s.resort;
+    if (!resorts[key]) resorts[key] = { name: key, days: 0, vertical: 0 };
+    resorts[key].days++;
+    resorts[key].vertical += s.vertical;
+  });
+  const resortList = Object.values(resorts).filter((r) => RESORT_COORDS[r.name]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
+
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link");
+      link.id = "leaflet-css";
+      link.rel = "stylesheet";
+      link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(link);
+    }
+
+    const loadLeaflet = () => {
+      if (window.L) return initMap();
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+      s.onload = initMap;
+      document.head.appendChild(s);
+    };
+
+    const initMap = () => {
+      if (!mapRef.current) return;
+      const L = window.L;
+      const map = L.map(mapRef.current, { zoomControl: false }).setView([45, -105], 4);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap', maxZoom: 19
+      }).addTo(map);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      leafletRef.current = map;
+
+      // Red Google Maps-style pin
+      const pinIcon = L.divIcon({
+        className: "",
+        html: '<svg width="30" height="40" viewBox="0 0 30 40" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))"><path d="M15,38 C15,38 3,22 3,13 C3,6.4 8.4,1 15,1 C21.6,1 27,6.4 27,13 C27,22 15,38 15,38 Z" fill="#ea4335" stroke="#b31412" stroke-width="1"/><circle cx="15" cy="13" r="5" fill="white"/></svg>',
+        iconSize: [30, 40],
+        iconAnchor: [15, 40],
+        popupAnchor: [0, -40],
+      });
+
+      resortList.forEach((r) => {
+        const c = RESORT_COORDS[r.name];
+        const shortName = r.name.replace(" Ski Resort", "").replace(" Mountain Resort", "").replace(" Resort", "");
+        const marker = L.marker([c.lat, c.lng], { icon: pinIcon }).addTo(map);
+        marker.bindPopup(
+          '<div style="font-family:DM Sans,sans-serif;min-width:140px">' +
+          '<div style="font-weight:700;font-size:14px;margin-bottom:2px">' + shortName + '</div>' +
+          '<div style="font-size:12px;color:#888;margin-bottom:6px">' + c.location + '</div>' +
+          '<div style="font-size:12px">' + r.days + ' day' + (r.days !== 1 ? 's' : '') + ' · ' + r.vertical.toLocaleString() + 'm vert</div>' +
+          '</div>'
+        );
+        marker.bindTooltip(shortName, {
+          permanent: true, direction: "top", offset: [0, -42], className: "resort-label",
+        });
+      });
+
+      if (resortList.length > 0) {
+        const bounds = L.latLngBounds(resortList.map(r => [RESORT_COORDS[r.name].lat, RESORT_COORDS[r.name].lng]));
+        map.fitBounds(bounds.pad(0.4));
+      }
+    };
+    loadLeaflet();
+    return () => { if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; } };
+  }, []);
+
+  return (
+    <div>
+      <style>{`
+        .resort-label {
+          background: rgba(10,22,40,0.85) !important;
+          border: 1px solid rgba(142,197,252,0.3) !important;
+          color: #fff !important;
+          font-family: 'DM Sans', sans-serif !important;
+          font-weight: 700 !important;
+          font-size: 11px !important;
+          padding: 3px 8px !important;
+          border-radius: 6px !important;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+        }
+        .resort-label::before {
+          border-top-color: rgba(10,22,40,0.85) !important;
+        }
+      `}</style>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+        <span>🗺</span> Resort Map
+      </h3>
+      <div ref={mapRef} style={{ height: 500, borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }} />
+      <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif", textAlign: "center" }}>
+        {resortList.length} resort{resortList.length !== 1 ? "s" : ""} · tap pins for details
+      </div>
+    </div>
+  );
+}
+// ── Nav Tabs ──
+function NavTabs({ active, setActive }) {
+  const tabs = [
+    { id: "overview", label: "Overview", icon: "📊" },
+    { id: "sessions", label: "Sessions", icon: "📋" },
+    { id: "records", label: "Records", icon: "🏆" },
+    { id: "resorts", label: "Resorts", icon: "⛷" },
+    { id: "map", label: "Map", icon: "🗺" },
+  ];
+
+  return (
+    <div style={{
+      display: "flex",
+      gap: 4,
+      background: "rgba(255,255,255,0.04)",
+      borderRadius: 12,
+      padding: 4,
+      marginBottom: 24,
+      overflowX: "auto",
+    }}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => setActive(t.id)}
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            background: active === t.id ? "rgba(142,197,252,0.15)" : "transparent",
+            border: active === t.id ? "1px solid rgba(142,197,252,0.2)" : "1px solid transparent",
+            borderRadius: 8,
+            color: active === t.id ? "#8ec5fc" : "rgba(255,255,255,0.45)",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif",
+            whiteSpace: "nowrap",
+            transition: "all 0.2s",
+          }}
+        >
+          <span style={{ marginRight: 4 }}>{t.icon}</span>
+          {t.label}
+        </button>
       ))}
     </div>
   );
 }
 
-function ERow({ entry, d, a, oc }) {
-  const s = ps(entry.pillar);
-  return (
-    <div onClick={oc} style={{ padding: "14px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer", transition: "all 0.25s ease", opacity: a ? 1 : 0, transitionDelay: `${d}ms` }}
-      onMouseEnter={e => e.currentTarget.style.paddingLeft = "8px"} onMouseLeave={e => e.currentTarget.style.paddingLeft = "0"}>
-      <div style={{ fontSize: 15, fontWeight: 500, color: "#EAEBF0", marginBottom: 3, lineHeight: 1.4 }}>{entry.title}</div>
-      <div style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: s.accent + "BB", letterSpacing: 0.5 }}>{entry.pillar}</div>
-    </div>
-  );
-}
-
-// ═══════════ APP ═══════════
-function Praxis() {
-  const [entries, setEntries] = useState([]);
-  const [view, setView] = useState("anchor");
-  const [selPillar, setSelPillar] = useState(null);
-  const [selEntry, setSelEntry] = useState(null);
-  const [anim, setAnim] = useState(false);
-  const [search, setSearch] = useState("");
-  const [entriesLoading, setEntriesLoading] = useState(true);
-
-  // Upload
-  const [uT, setUT] = useState(""); const [uC, setUC] = useState(""); const [uP, setUP] = useState(""); const [uS, setUS] = useState(false);
-
-  // Edit
-  const [editing, setEditing] = useState(false);
-  const [dT, setDT] = useState(""); const [dC, setDC] = useState(""); const [dP, setDP] = useState(""); const [dN, setDN] = useState("");
-  const [toast, setToast] = useState(null); const [pillarDD, setPillarDD] = useState(false);
-
-  // Anchor
-  const [anchorQueue, setAnchorQueue] = useState([]);
-  const [anchorIdx, setAnchorIdx] = useState(0);
-  const [anchorDate, setAnchorDate] = useState(null);
-
-  // Streak + Auth
-  const [streak, setStreak] = useState(0);
+// ── Main App ──
+function SkiTracker() {
+  const [sessions, setSessions] = useState([]);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [deletingSession, setDeletingSession] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const authStreakDone = useRef(false);
-  const localStreakDone = useRef(false);
-
-  // Review
-  const [revPillars, setRevPillars] = useState([]);
-  const [revQueue, setRevQueue] = useState([]); const [revIdx, setRevIdx] = useState(0);
-  const [flipPhase, setFlipPhase] = useState("idle");
-  const flipTimer = useRef(null);
-
-  // Overlay
-  const [showOverlay, setShowOverlay] = useState(false);
-  const overlayTimer = useRef(null);
-
-  // Settings panel
+  const [syncing, setSyncing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [lastExported, setLastExported] = useState(null);
+  const importRef = useRef(null);
 
-  // ─── Effects ──
-  useEffect(() => { setAnim(false); const t = setTimeout(() => setAnim(true), 40); return () => clearTimeout(t); }, [view, selPillar, selEntry]);
-  useEffect(() => { if (editing) { const h = e => { if (e.key === "Escape") cancelEdit(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); } }, [editing]);
-  useEffect(() => { if (!pillarDD) return; const h = () => setPillarDD(false); window.addEventListener("click", h); return () => window.removeEventListener("click", h); }, [pillarDD]);
-
-  // Build anchor deck — persist daily anchor in Firestore
+  // Load last exported date from localStorage (UI preference, not data)
   useEffect(() => {
-    if (entries.length === 0 || !user) { setAnchorQueue([]); return; }
-    const today = todayStr();
-    if (anchorDate === today && anchorQueue.length > 0) return;
-
-    (async () => {
-      const ref = fbDb.collection("users").doc(user.uid);
-      let savedAnchorId = null;
-      try {
-        const snap = await ref.get();
-        if (snap.exists) {
-          const data = snap.data();
-          if (data.anchorDate === today && data.anchorId != null) {
-            savedAnchorId = data.anchorId;
-          }
-        }
-      } catch(e) { console.warn("Anchor read failed", e); }
-
-      // Use saved anchor or pick a new one
-      const dailyId = savedAnchorId != null && entries.find(e => String(e.id) === String(savedAnchorId))
-        ? savedAnchorId
-        : entries[Math.floor(Math.random() * entries.length)].id;
-
-      const rest = shuffle(entries.filter(e => String(e.id) !== String(dailyId)).map(e => e.id));
-      setAnchorQueue([dailyId, ...rest]);
-      setAnchorIdx(0);
-      setAnchorDate(today);
-
-      // Save to Firestore if new
-      if (savedAnchorId == null || String(savedAnchorId) !== String(dailyId)) {
-        try { await ref.set({ anchorDate: today, anchorId: dailyId }, { merge: true }); } catch(e) {}
-      }
-    })();
-  }, [entries.length, user]);
-
-  // ─── Firebase Auth listener (no auto-popup — sign-in button handles it) ──
-  useEffect(() => {
-    const unsub = fbAuth.onAuthStateChanged((u) => {
-      setUser(u);
-      setAuthLoading(false);
-    });
-    return () => unsub();
+    const saved = localStorage.getItem("vert_lastExported");
+    if (saved) setLastExported(saved);
   }, []);
 
-  // ─── Load entries from Firestore (initialized flag, not empty-check) ──
-  const entriesLoadedForUid = useRef(null);
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      setEntries(ENTRIES.map(e => ({ ...e, notes: null })));
-      setEntriesLoading(false);
-      entriesLoadedForUid.current = null;
-      return;
-    }
-    if (entriesLoadedForUid.current === user.uid) return;
-    entriesLoadedForUid.current = user.uid;
-    setEntriesLoading(true);
-    (async () => {
-      const userRef = fbDb.collection("users").doc(user.uid);
-      const col = userRef.collection("entries");
-      try {
-        // Check initialized flag on user doc (not empty collection)
-        const userSnap = await userRef.get();
-        const isInitialized = userSnap.exists && userSnap.data().entriesInitialized === true;
-
-        if (!isInitialized) {
-          // First login: seed default entries to Firestore with required fields
-          const batch = fbDb.batch();
-          const now = firebase.firestore.FieldValue.serverTimestamp();
-          const seeded = ENTRIES.map(e => {
-            const id = String(e.id);
-            const data = {
-              title: e.title,
-              content: e.content,
-              pillar: e.pillar,
-              notes: null,
-              ownerId: user.uid,
-              createdAt: now,
-              updatedAt: now,
-              schemaVersion: SCHEMA_VERSION,
-              deleted: false,
-            };
-            batch.set(col.doc(id), data);
-            return { ...data, id, notes: null, createdAt: null, updatedAt: null };
-          });
-          // Set initialized flag on user doc
-          batch.set(userRef, { entriesInitialized: true }, { merge: true });
-          await batch.commit();
-          setEntries(seeded.filter(e => !e.deleted));
-        } else {
-          // Load existing entries, filter out soft-deleted
-          const snap = await col.where("deleted", "==", false).get();
-          const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setEntries(loaded);
-        }
-      } catch(e) {
-        console.warn("Failed to load entries", e);
-        setEntries(ENTRIES.map(e => ({ ...e, notes: null })));
-      }
-      setEntriesLoading(false);
-    })();
-  }, [authLoading, user]);
-
-  // ─── Firestore streak (signed-in users) ──
-  useEffect(() => {
-    if (!user || authStreakDone.current) return;
-    authStreakDone.current = true;
-    (async () => {
-      const today = todayStr();
-      const yesterday = yesterdayStr();
-      const ref = fbDb.collection("users").doc(user.uid);
-      let count = 0, lastDate = null;
-      try {
-        const snap = await ref.get();
-        if (snap.exists) { const data = snap.data(); count = data.streak || 0; lastDate = data.lastOpenDate || null; }
-      } catch(e) { console.warn("Firestore read failed", e); }
-
-      if (lastDate === null) { count = 1; }
-      else if (lastDate === today) {
-        setStreak(count);
-        try { await ref.set({ lastLoginAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(e) {}
-        return;
-      }
-      else if (lastDate === yesterday) { count = count + 1; }
-      else { count = 1; }
-
-      setStreak(count);
-      try {
-        await ref.set({
-          uid: user.uid, displayName: user.displayName || "", email: user.email || "", photoURL: user.photoURL || "",
-          ...(!lastDate ? { createdAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
-          lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
-          streak: count, lastOpenDate: today,
-        }, { merge: true });
-      } catch(e) { console.warn("Firestore write failed", e); }
-    })();
-  }, [user]);
-
-  // ─── localStorage streak (not signed in) ──
-  useEffect(() => {
-    if (authLoading || user || localStreakDone.current) return;
-    localStreakDone.current = true;
-    const today = todayStr();
-    const yesterday = yesterdayStr();
-    let lastDate = null, count = 0;
-    try { const raw = localStorage.getItem("praxis_streak"); if (raw) { const p = JSON.parse(raw); lastDate = p.lastOpenDate || null; count = p.streak || 0; } } catch(e) {}
-    if (lastDate === null) { count = 1; }
-    else if (lastDate === today) { setStreak(count); return; }
-    else if (lastDate === yesterday) { count = count + 1; }
-    else { count = 1; }
-    setStreak(count);
-    try { localStorage.setItem("praxis_streak", JSON.stringify({ lastOpenDate: today, streak: count })); } catch(e) {}
-  }, [authLoading, user]);
-
-  // Derived
-  const liveEntry = selEntry ? entries.find(e => e.id === selEntry.id) || selEntry : null;
-  const counts = PILLARS.map(p => ({ p, n: entries.filter(e => e.pillar === p).length }));
-  const filtered = selPillar ? entries.filter(e => e.pillar === selPillar) : entries;
-  const results = search.trim() ? entries.filter(e => e.title.toLowerCase().includes(search.toLowerCase()) || e.content.toLowerCase().includes(search.toLowerCase()) || e.pillar.toLowerCase().includes(search.toLowerCase())) : null;
-  const anchorEntry = anchorQueue.length > 0 ? entries.find(e => e.id === anchorQueue[anchorIdx % anchorQueue.length]) : null;
-  const revEntry = revQueue.length > 0 ? entries.find(e => e.id === revQueue[revIdx % revQueue.length]) : null;
-  const fadeUp = (d = 0) => ({ opacity: anim ? 1 : 0, transform: anim ? "translateY(0)" : "translateY(8px)", transition: `opacity 0.4s ease ${d}ms, transform 0.4s ease ${d}ms` });
-
-  // ─── Haptic ──
-  function haptic() { try { if (navigator.vibrate) navigator.vibrate(12); } catch(e) {} }
-
-  // ─── Auth actions ──
-  const [authError, setAuthError] = useState(null);
-  async function signInWithGoogle() {
-    setAuthError(null);
-    try {
-      await fbAuth.signInWithPopup(googleProvider);
-    } catch(e) {
-      console.error("Sign-in error:", e.code, e.message);
-      setAuthError(e.code + ": " + e.message);
-    }
-  }
-  async function handleSignOut() {
-    try { await fbAuth.signOut(); setStreak(0); authStreakDone.current = false; localStreakDone.current = false; entriesLoadedForUid.current = null; setEntries(ENTRIES.map(e => ({ ...e, notes: null }))); } catch(e) { console.error(e); }
-  }
-
-  // ─── Export (mandatory per Master App OS) ──
-  function exportData() {
-    const data = {
-      app: APP_NAME,
-      version: APP_VERSION,
-      exportDate: new Date().toISOString(),
+  // Export all sessions as JSON
+  const exportData = () => {
+    const exportObj = {
+      appName: "vert",
       schemaVersion: SCHEMA_VERSION,
-      entries: entries.map(e => ({
-        id: e.id,
-        title: e.title,
-        content: e.content,
-        pillar: e.pillar,
-        notes: e.notes || null,
-      })),
+      exportedAt: new Date().toISOString(),
+      recordCount: sessions.length,
+      data: sessions,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `praxis-export-${todayStr()}.json`;
-    document.body.appendChild(a);
+    a.download = `vert-export-${dateStr}.json`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setToast("Export downloaded");
-    setTimeout(() => setToast(null), 2500);
-  }
+    const now = new Date().toISOString();
+    setLastExported(now);
+    localStorage.setItem("vert_lastExported", now);
+  };
 
-  // ─── Import ──
-  function importData(e) {
-    const file = e.target.files[0];
+  // Import sessions from JSON file
+  const importData = (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
-        const data = JSON.parse(ev.target.result);
-        if (!data.entries || !Array.isArray(data.entries)) { setToast("Invalid export file"); setTimeout(() => setToast(null), 2500); return; }
-        const now = firebase.firestore.FieldValue.serverTimestamp();
-        const imported = data.entries.map(entry => {
-          const id = String(entry.id || Date.now() + Math.random());
-          return {
-            id,
-            title: entry.title || "Untitled",
-            content: entry.content || "",
-            pillar: entry.pillar || "Identity",
-            notes: entry.notes || null,
-            ownerId: user?.uid || null,
-            createdAt: now,
-            updatedAt: now,
-            schemaVersion: SCHEMA_VERSION,
-            deleted: false,
+        const parsed = JSON.parse(ev.target.result);
+        const records = parsed.data || parsed;
+        if (!Array.isArray(records)) { alert("Invalid export file."); return; }
+        const db = getDb();
+        const batch = db.batch();
+        const now = new Date().toISOString();
+        let count = 0;
+        records.forEach((r) => {
+          if (!r.id || !r.date) return;
+          const enriched = {
+            ...r,
+            ownerId: user.uid,
+            updatedAt: r.updatedAt || now,
+            createdAt: r.createdAt || now,
+            schemaVersion: r.schemaVersion || SCHEMA_VERSION,
           };
+          // Remove deleted flag on import (restores soft-deleted records)
+          delete enriched.deleted;
+          const ref = db.collection("users").doc(user.uid).collection("sessions").doc(r.id);
+          batch.set(ref, enriched);
+          count++;
         });
-        if (user) {
-          const col = fbDb.collection("users").doc(user.uid).collection("entries");
-          const batch = fbDb.batch();
-          imported.forEach(entry => {
-            const { id, ...rest } = entry;
-            batch.set(col.doc(id), rest);
-          });
-          await batch.commit();
-        }
-        setEntries(prev => [...imported, ...prev]);
-        setToast(`Imported ${imported.length} entries`);
-        setTimeout(() => setToast(null), 2500);
-      } catch(err) {
-        console.error("Import failed", err);
-        setToast("Import failed — invalid file");
-        setTimeout(() => setToast(null), 2500);
+        // Mark initialized in case this is a fresh account
+        batch.set(db.collection("users").doc(user.uid), { initialized: true }, { merge: true });
+        await batch.commit();
+        alert(`Imported ${count} sessions.`);
+      } catch (err) {
+        alert("Error reading file: " + err.message);
       }
     };
     reader.readAsText(file);
+    // Reset input so same file can be re-imported
     e.target.value = "";
-  }
+  };
 
-  // ─── Actions ──
-  function goTo(v, p, e) { setView(v); setSelPillar(p || null); setSelEntry(e || null); setSearch(""); if (v !== "entry") setEditing(false); setShowOverlay(false); setShowSettings(false); }
+  // Firebase init (singleton)
+  const firebaseConfig = {
+    apiKey: "AIzaSyAnAWxomsz8XmXu3pDVn5QETliyCuBmBwM",
+    authDomain: "vert-25c90.firebaseapp.com",
+    projectId: "vert-25c90",
+    storageBucket: "vert-25c90.firebasestorage.app",
+    messagingSenderId: "614878832014",
+    appId: "1:614878832014:web:44187f4ba3b83fc68bb0df"
+  };
 
-  function saveNew() {
-    if (!uT.trim() || !uC.trim() || !uP || uS) return;
-    const id = String(Date.now());
-    const now = firebase.firestore.FieldValue.serverTimestamp();
-    const entry = {
-      id,
-      title: uT.trim(),
-      content: uC.trim(),
-      pillar: uP,
-      notes: null,
-      ownerId: user?.uid || null,
-      createdAt: null,
-      updatedAt: null,
-      schemaVersion: SCHEMA_VERSION,
-      deleted: false,
+  const getApp = () => {
+    if (!window._fbApp) {
+      window._fbApp = firebase.initializeApp(firebaseConfig);
+    }
+    return window._fbApp;
+  };
+  const getAuth = () => firebase.auth(getApp());
+  const getDb = () => firebase.firestore(getApp());
+
+  // Auth state listener — persist login across browser closes
+  useEffect(() => {
+    const auth = getAuth();
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(() => {
+      const unsub = auth.onAuthStateChanged((u) => {
+        setUser(u);
+        setAuthLoading(false);
+      });
+      return () => unsub();
+    });
+  }, []);
+
+  // Load sessions from Firestore when user logs in
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      return;
+    }
+    setSyncing(true);
+    const db = getDb();
+    const userDocRef = db.collection("users").doc(user.uid);
+    let didSeed = false;
+
+    // First check if this user was ever initialized
+    userDocRef.get().then((userMeta) => {
+      const isInitialized = userMeta.exists && userMeta.data()?.initialized;
+
+      // Now listen to sessions in real-time
+      const unsub = userDocRef.collection("sessions")
+        .onSnapshot((snap) => {
+          if (snap.empty && !isInitialized && !didSeed) {
+            // Brand new user — seed with preloaded sessions
+            didSeed = true;
+            const batch = db.batch();
+            PRELOADED_SESSIONS.forEach((s) => {
+              batch.set(userDocRef.collection("sessions").doc(s.id), { ...s, ownerId: user.uid });
+            });
+            batch.set(userDocRef, { initialized: true }, { merge: true });
+            batch.commit();
+            // onSnapshot will fire again with the seeded data
+          } else {
+            const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+              .filter(d => !d.deleted);
+            setSessions(data.sort((a, b) => a.date.localeCompare(b.date)));
+          }
+          setSyncing(false);
+        }, (err) => {
+          console.error("Firestore error:", err);
+          setSyncing(false);
+        });
+
+      // Store unsub so cleanup works
+      window._fbUnsub = unsub;
+    });
+
+    return () => {
+      if (window._fbUnsub) window._fbUnsub();
     };
-    setEntries(p => [entry, ...p]);
-    setUS(true); haptic(); setToast("Entry Saved");
-    if (user) {
-      fbDb.collection("users").doc(user.uid).collection("entries").doc(id)
-        .set({
-          title: entry.title,
-          content: entry.content,
-          pillar: entry.pillar,
-          notes: null,
-          ownerId: user.uid,
-          createdAt: now,
-          updatedAt: now,
-          schemaVersion: SCHEMA_VERSION,
-          deleted: false,
-        })
-        .catch(e => console.warn("Save failed", e));
+  }, [user]);
+
+  const signIn = async () => {
+    try {
+      const auth = getAuth();
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithPopup(provider);
+    } catch (err) {
+      // If popup blocked (common on mobile), try redirect
+      if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
+        try {
+          const auth = getAuth();
+          const provider = new firebase.auth.GoogleAuthProvider();
+          await auth.signInWithRedirect(provider);
+        } catch (err2) {
+          console.error("Redirect sign in error:", err2);
+        }
+      } else {
+        console.error("Sign in error:", err);
+      }
     }
-    setTimeout(() => { setToast(null); setUS(false); setUT(""); setUC(""); setUP(""); goTo("library"); }, 1000);
-  }
+  };
 
-  function startEdit() { const e = entries.find(x => x.id === selEntry?.id); if (!e) return; setDT(e.title); setDC(e.content); setDP(e.pillar); setDN(e.notes || ""); setEditing(true); }
-  function cancelEdit() { setEditing(false); setPillarDD(false); }
-
-  function saveEdit() {
-    if (!dT.trim() || !dC.trim() || !dP || !selEntry) return;
-    const cur = entries.find(e => e.id === selEntry.id); if (!cur) return;
-    const oldP = cur.pillar;
-    const updated = { ...cur, title: dT.trim(), content: dC.trim(), pillar: dP, notes: dN.trim() || null };
-    setEntries(p => p.map(e => e.id === cur.id ? updated : e)); setSelEntry(updated); setEditing(false); setPillarDD(false);
-    setToast(dP !== oldP ? `Updated · Moved to ${dP}` : "Updated"); setTimeout(() => setToast(null), 2500);
-    if (user) {
-      fbDb.collection("users").doc(user.uid).collection("entries").doc(String(cur.id))
-        .set({
-          title: updated.title,
-          content: updated.content,
-          pillar: updated.pillar,
-          notes: updated.notes,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true })
-        .catch(e => console.warn("Edit save failed", e));
+  const signOut = async () => {
+    try {
+      await getAuth().signOut();
+      setSessions([]);
+    } catch (err) {
+      console.error("Sign out error:", err);
     }
-  }
+  };
 
-  // Soft delete (per Master App OS — never hard delete)
-  function del(id) {
-    setEntries(p => p.filter(e => e.id !== id));
-    setSelEntry(null);
-    goTo("library");
-    if (user) {
-      fbDb.collection("users").doc(user.uid).collection("entries").doc(String(id))
-        .set({ deleted: true, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-        .catch(e => console.warn("Soft delete failed", e));
-    }
-  }
+  const addSession = async (session) => {
+    const now = new Date().toISOString();
+    const enriched = {
+      ...session,
+      ownerId: user.uid,
+      createdAt: session.createdAt || now,
+      updatedAt: now,
+      schemaVersion: SCHEMA_VERSION,
+    };
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(enriched.id).set(enriched);
+  };
 
-  function goBack() { if (editing) { cancelEdit(); return; } if (view === "entry" && selPillar) goTo("category", selPillar); else goTo("library"); }
+  const clearAllSessions = async () => {
+    const db = getDb();
+    const snap = await db.collection("users").doc(user.uid).collection("sessions").get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    // Mark as initialized so seeding doesn't happen again
+    await db.collection("users").doc(user.uid).set({ initialized: true }, { merge: true });
+    setSessions([]);
+    setShowClearConfirm(false);
+    setActiveTab("overview");
+  };
 
-  // Review
-  function beginReview() {
-    const pool = entries.filter(e => revPillars.includes(e.pillar)).map(e => e.id);
-    if (pool.length === 0) return;
-    setRevQueue(shuffle(pool)); setRevIdx(0); setView("review-play");
-  }
-  function revNext() { const n = revIdx + 1; if (n >= revQueue.length) { const pool = entries.filter(e => revPillars.includes(e.pillar)).map(e => e.id); setRevQueue(shuffle(pool)); setRevIdx(0); } else setRevIdx(n); }
-  function doFlip() {
-    if (flipPhase !== "idle") return;
-    haptic(); setFlipPhase("out"); clearTimeout(flipTimer.current);
-    flipTimer.current = setTimeout(() => { revNext(); setFlipPhase("in"); flipTimer.current = setTimeout(() => setFlipPhase("idle"), 220); }, 140);
-  }
-  function revPrev() { setRevIdx(i => i > 0 ? i - 1 : i); }
-  function toggleRP(p) { setRevPillars(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]); }
+  const updateSession = async (updated) => {
+    const enriched = {
+      ...updated,
+      updatedAt: new Date().toISOString(),
+      schemaVersion: SCHEMA_VERSION,
+    };
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(enriched.id).set(enriched);
+  };
 
-  function toggleOverlay(e) {
-    if (e && e.currentTarget) { const rect = e.currentTarget.getBoundingClientRect(); const x = e.clientX - rect.left; if (x < rect.width * 0.35 || x > rect.width * 0.65) return; }
-    setShowOverlay(v => !v);
-  }
+  const deleteSession = async (session) => {
+    // Soft delete — mark as deleted instead of removing from Firestore
+    const db = getDb();
+    await db.collection("users").doc(user.uid).collection("sessions").doc(session.id).set(
+      { deleted: true, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+    setDeletingSession(null);
+  };
 
-  const revSwipe = useSwipe(doFlip, revPrev);
-  const isImmersive = view === "anchor" || view === "review-play";
+  const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+  const totalVert = sessions.reduce((a, s) => a + (s.vertical || 0), 0);
+  const totalDist = sessions.reduce((a, s) => a + (s.distance || 0), 0);
+  const totalRuns = sessions.reduce((a, s) => a + (s.runs || 0), 0);
+  const topSpeed = Math.max(...sessions.map((s) => s.topSpeed || 0), 0);
 
-  // ─── RENDER ──
-
-  // Auth still loading
+  // Loading state
   if (authLoading) {
     return (
-      <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, fontWeight: 600, color: T.t1, letterSpacing: -0.5, marginBottom: 12 }}>Praxis</div>
-          <div style={{ fontSize: 13, fontFamily: T.mono, color: T.t3, letterSpacing: 1 }}>Loading...</div>
-        </div>
+      <div style={{ minHeight: "100vh", background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap'); @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <h1 style={{ fontSize: 32, fontFamily: "'Space Mono', monospace", background: "linear-gradient(135deg, #e0eafc, #8ec5fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 16 }}>⛷ VERT</h1>
+        <div style={{ width: 28, height: 28, border: "3px solid rgba(142,197,252,0.2)", borderTopColor: "#8ec5fc", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
       </div>
     );
   }
 
-  // Auth done but no user — show sign-in button
+  // Login screen
   if (!user) {
     return (
-      <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, fontWeight: 600, color: T.t1, letterSpacing: -0.5, marginBottom: 28 }}>Praxis</div>
-          <button onClick={signInWithGoogle} style={{
-            padding: "14px 32px", background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.rs,
-            color: T.t1, fontSize: 14, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, cursor: "pointer",
-            transition: "all 0.2s ease",
-          }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = T.bdH; }}>Sign in with Google</button>
-          {authError && (
-            <div style={{ marginTop: 20, padding: "12px 20px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, maxWidth: 400 }}>
-              <div style={{ fontSize: 12, fontFamily: T.mono, color: "#fca5a5", wordBreak: "break-all" }}>{authError}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Signed in but entries still loading
-  if (entriesLoading) {
-    return (
-      <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, fontWeight: 600, color: T.t1, letterSpacing: -0.5, marginBottom: 12 }}>Praxis</div>
-          <div style={{ fontSize: 13, fontFamily: T.mono, color: T.t3, letterSpacing: 1 }}>Loading your library...</div>
-        </div>
+      <div style={{ minHeight: "100vh", background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');`}</style>
+        <h1 style={{ fontSize: 36, fontFamily: "'Space Mono', monospace", background: "linear-gradient(135deg, #e0eafc, #8ec5fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>⛷ VERT</h1>
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 40 }}>Lifetime Ski Tracker</p>
+        <button onClick={signIn} style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "14px 28px",
+          background: "#fff", border: "none", borderRadius: 12, cursor: "pointer",
+          fontSize: 15, fontWeight: 600, color: "#333", fontFamily: "'DM Sans', sans-serif",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Sign in with Google
+        </button>
+        <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, marginTop: 20, textAlign: "center" }}>
+          Your ski data syncs across all your devices
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.t1, fontFamily: T.sans, WebkitFontSmoothing: "antialiased" }}>
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(165deg, #0f1729 0%, #111827 40%, #162033 100%)",
+      color: "#fff",
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
       <style>{`
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        ::selection{background:rgba(120,170,255,0.25)}
-        input::placeholder,textarea::placeholder{color:${T.t3}}
-        input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px ${T.foc}}
-        button:focus-visible{outline:2px solid ${T.foc};outline-offset:2px}
-        textarea{resize:vertical}
-        textarea::-webkit-scrollbar{width:4px}
-        textarea::-webkit-scrollbar-track{background:transparent}
-        textarea::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes flipOut{0%{opacity:1;transform:translateX(0) scale(1)}100%{opacity:0;transform:translateX(-36px) scale(0.98)}}
-        @keyframes flipIn{0%{opacity:0;transform:translateX(36px) scale(0.98)}100%{opacity:1;transform:translateX(0) scale(1)}}
-        @keyframes flipSweep{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}
-        .featured{
-          border:1px solid rgba(180,170,255,0.10);
-          box-shadow:0 0 20px 2px rgba(180,170,255,0.04), 0 4px 24px rgba(0,0,0,0.35);
-          background:rgba(255,255,255,0.018);
-          border-radius:14px;
-          padding:40px 36px;
-          height:auto;
-          min-height:240px;
-        }
-        @media(max-width:520px){.featured{padding:28px 20px;border-radius:12px;min-height:200px}}
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Space+Mono:wght@400;700&display=swap');
+        @keyframes spin { to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { margin: 0; background: #0f1729; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
       `}</style>
 
-      {/* ═══════ TODAY ═══════ */}
-      {view === "anchor" && (
-        <div style={{ minHeight: "100vh", padding: `0 28px ${FOOTER_H + 48}px`, maxWidth: 640, margin: "0 auto", cursor: "default", userSelect: "none", background: "transparent" }}>
-          {entriesLoading ? (
-            <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <p style={{ color: T.t3, fontSize: 14, fontFamily: T.mono, letterSpacing: 1 }}>Loading…</p>
-            </div>
-          ) : entries.length === 0 ? (
-            <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: "14vh" }}>
-              <p style={{ color: T.t2, fontSize: 16, marginBottom: 20 }}>Your library is empty.</p>
-              <button onClick={() => goTo("upload")} style={{ padding: "12px 28px", background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.rs, color: T.t1, fontSize: 14, cursor: "pointer" }}>+ Add your first entry</button>
-            </div>
-          ) : anchorEntry ? (
-            <DynCard className="featured">
-              <FullQuote entry={anchorEntry} fadeKey="today" showTitle={false} immersive />
-            </DynCard>
-          ) : null}
-          <FooterBar mode="today" onNext={() => goTo("library")} streak={streak} />
+      {/* Header */}
+      <div style={{
+        padding: "28px 24px 20px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        maxWidth: 960,
+        margin: "0 auto",
+      }}>
+        <div>
+          <h1 style={{
+            fontSize: 24,
+            fontWeight: 700,
+            fontFamily: "'Space Mono', monospace",
+            letterSpacing: "-0.02em",
+            background: "linear-gradient(135deg, #e0eafc, #8ec5fc)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}>
+            ⛷ VERT
+          </h1>
+          <p style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.3)",
+            letterSpacing: "0.15em",
+            textTransform: "uppercase",
+            marginTop: 2,
+          }}>Lifetime Ski Tracker</p>
         </div>
-      )}
-
-      {/* ═══════ REVIEW PLAYBACK ═══════ */}
-      {view === "review-play" && (
-        <div {...revSwipe} style={{ minHeight: "100vh", padding: `0 28px ${FOOTER_H + 48}px`, maxWidth: 640, margin: "0 auto", userSelect: "none", background: "transparent" }}>
-          {revEntry ? (
-            <div style={{
-              animation: flipPhase === "out" ? "flipOut 0.16s ease-in forwards" : flipPhase === "in" ? "flipIn 0.2s ease-out forwards" : "none",
-            }}>
-              <DynCard className="featured">
-                <FullQuote entry={revEntry} fadeKey={flipPhase === "idle" ? revIdx : undefined} showTitle={false} immersive animStyle="none" />
-              </DynCard>
-            </div>
-          ) : (
-            <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <p style={{ color: T.t2 }}>No entries in selected pillars.</p>
-            </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {syncing && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "'DM Sans', sans-serif" }}>Syncing...</span>}
+          {sessions.length > 0 && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 10,
+                color: "rgba(255,255,255,0.5)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              Clear All
+            </button>
           )}
-          {flipPhase !== "idle" && (
-            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 20,
-              background: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.08) 60%, transparent 100%)",
-              animation: "flipSweep 0.36s ease-in-out forwards" }} />
-          )}
-          <FooterBar mode="review" onFlip={doFlip} onExit={() => goTo("library")} flipDisabled={flipPhase !== "idle"} />
-        </div>
-      )}
-
-      {/* ═══════ REVIEW PILLAR PICKER ═══════ */}
-      {view === "review-select" && (
-        <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 24px" }}>
-          <div style={{ padding: "40px 0 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <button onClick={() => goTo("anchor")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", color: T.t2 }}
-              onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t2}>← Back</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28, ...fadeUp() }}>
-            {PILLARS.map((p, i) => {
-              const s = ps(p); const sel = revPillars.includes(p); const n = entries.filter(e => e.pillar === p).length;
-              return (
-                <div key={p} onClick={() => toggleRP(p)} style={{
-                  background: s.bg, border: `1px solid ${sel ? s.accent + "45" : "rgba(255,255,255,0.04)"}`,
-                  borderRadius: T.r, padding: "22px 20px", cursor: "pointer", transition: "all 0.25s ease", opacity: sel ? 1 : 0.4,
-                }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = s.accent + "60"}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = sel ? s.accent + "45" : "rgba(255,255,255,0.04)"}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: T.t1, marginBottom: 4, lineHeight: 1.3 }}>{p}</div>
-                  <div style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: T.t2 }}>{n} {n === 1 ? "entry" : "entries"}</div>
-                </div>
-              );
-            })}
-          </div>
-          {revPillars.length === 0 && (
-            <div style={{ fontSize: 12, fontFamily: T.mono, color: T.t3, marginBottom: 12, letterSpacing: 0.5 }}>Select at least one pillar</div>
-          )}
-          <button onClick={beginReview} disabled={revPillars.length === 0} style={{
-            padding: "14px 0", width: "100%", borderRadius: T.rs, cursor: revPillars.length > 0 ? "pointer" : "default",
-            background: revPillars.length > 0 ? T.s2 : T.s1, border: `1px solid ${revPillars.length > 0 ? T.bdH : T.bd}`,
-            color: revPillars.length > 0 ? T.t1 : T.t3, fontSize: 13, fontFamily: T.mono, fontWeight: 600,
-            letterSpacing: 2.5, textTransform: "uppercase", transition: "all 0.25s ease", opacity: revPillars.length > 0 ? 1 : 0.5,
-          }}>Start</button>
-        </div>
-      )}
-
-      {/* ═══════ NON-IMMERSIVE VIEWS ═══════ */}
-      {!isImmersive && view !== "review-select" && view !== "review-play" && (
-        <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 24px" }}>
-          {/* Header */}
-          <header style={{ padding: "40px 0 24px", borderBottom: `1px solid ${T.bd}`, marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 16 }}>
-                <div style={{ cursor: "pointer" }} onClick={() => goTo("anchor")}>
-                  <div style={{ fontSize: 32, fontWeight: 600, color: T.t1, letterSpacing: -0.5, lineHeight: 1.2 }}>Praxis</div>
-                </div>
-                {streak > 0 && <span style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: T.t3, letterSpacing: 0.5, marginBottom: 2 }}>Streak: {streak}</span>}
-              </div>
-              {/* Settings gear */}
-              <button onClick={() => setShowSettings(v => !v)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontSize: 18, color: T.t3, transition: "color 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t3}
-                title="Settings">⚙</button>
-            </div>
-
-            {/* Settings dropdown */}
-            {showSettings && (
-              <div style={{ background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.r, padding: "16px 20px", marginBottom: 16, animation: "fadeIn 0.2s ease" }}>
-                <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 3, textTransform: "uppercase", color: T.t3, marginBottom: 14 }}>Settings</div>
-
-                {/* Version stamp (mandatory per Master App OS) */}
-                <div style={{ fontSize: 12, fontFamily: T.mono, color: T.t3, marginBottom: 16, lineHeight: 1.6 }}>
-                  Build: {APP_NAME} {APP_VERSION} — {BUILD_DATE}<br />
-                  Env: Production
-                </div>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  <button onClick={exportData} style={{ padding: "8px 16px", background: T.s1, border: `1px solid ${T.bd}`, borderRadius: T.rs, color: T.t2, fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, cursor: "pointer", transition: "all 0.2s" }}
-                    onMouseEnter={e => { e.currentTarget.style.color = T.t1; e.currentTarget.style.borderColor = T.bdH; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = T.t2; e.currentTarget.style.borderColor = T.bd; }}>Export JSON</button>
-
-                  <label style={{ padding: "8px 16px", background: T.s1, border: `1px solid ${T.bd}`, borderRadius: T.rs, color: T.t2, fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, cursor: "pointer", transition: "all 0.2s", display: "inline-block" }}>
-                    Import JSON
-                    <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
-                  </label>
-
-                  {user && (
-                    <button onClick={handleSignOut} style={{ padding: "8px 16px", background: T.s1, border: `1px solid ${T.dngD}`, borderRadius: T.rs, color: "rgba(239,68,68,0.6)", fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, cursor: "pointer", transition: "all 0.2s" }}
-                      onMouseEnter={e => { e.currentTarget.style.color = T.dng; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = "rgba(239,68,68,0.6)"; }}>Sign Out</button>
-                  )}
-                </div>
-
-                {user && (
-                  <div style={{ marginTop: 12, fontSize: 12, fontFamily: T.mono, color: T.t3 }}>
-                    Signed in as {user.displayName || user.email}
+          <button
+            onClick={() => setShowUpload(true)}
+            style={{
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #8ec5fc, #667eea)",
+              border: "none",
+              borderRadius: 10,
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            + Add Session
+          </button>
+          {user && (
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowSettings(!showSettings)} title="Settings" style={{
+                width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(142,197,252,0.3)",
+                background: "none", cursor: "pointer", overflow: "hidden", padding: 0, flexShrink: 0,
+              }}>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", background: "rgba(142,197,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#8ec5fc", fontSize: 14, fontWeight: 700 }}>
+                    {(user.displayName || user.email || "?")[0].toUpperCase()}
                   </div>
                 )}
-              </div>
-            )}
-
-            <nav style={{ display: "flex", gap: 6 }}>
-              {[["anchor","Today"],["review-select","Review"],["library","Library"],["upload","+ Add"]].map(([k, l]) => {
-                const a = k === "library" ? ["library","category","entry"].includes(view) : view === k;
-                return <button key={k} onClick={() => goTo(k)} style={{ padding: "8px 18px", borderRadius: T.rs, cursor: "pointer", background: a ? T.s2 : "transparent", border: `1px solid ${a ? T.bdH : T.bd}`, color: a ? T.t1 : T.t2, fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", transition: "all 0.2s ease" }}>{l}</button>;
-              })}
-            </nav>
-          </header>
-
-          {/* Upload */}
-          {view === "upload" && (
-            <div style={fadeUp()}>
-              <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 16 }}>New Entry</div>
-              <input type="text" placeholder="Title" value={uT} onChange={e => setUT(e.target.value)} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${T.bdH}`, color: T.t1, fontSize: 20, fontWeight: 500, fontFamily: T.sans, padding: "12px 0", marginBottom: 20, lineHeight: 1.4 }} />
-              <textarea placeholder="Paste your text here..." value={uC} onChange={e => setUC(e.target.value)} rows={7} style={{ width: "100%", background: T.s1, border: `1px solid ${T.bd}`, borderRadius: T.r, color: T.t1, fontSize: 15, fontFamily: T.serif, padding: "16px 18px", lineHeight: 1.8, boxSizing: "border-box" }} />
-              <div style={{ marginTop: 24 }}>
-                <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 12 }}>Pillar</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {PILLARS.map(p => { const a = uP === p, s = ps(p); return <button key={p} onClick={() => setUP(a ? "" : p)} style={{ padding: "7px 16px", borderRadius: 20, cursor: "pointer", background: a ? s.accent + "1A" : T.s1, border: `1px solid ${a ? s.accent + "55" : T.bd}`, color: a ? s.accent : T.t2, fontSize: 13, fontWeight: 500, fontFamily: T.sans, transition: "all 0.2s ease" }}>{p}</button>; })}
-                </div>
-              </div>
-              <button onClick={saveNew} disabled={!uT.trim() || !uC.trim() || !uP || uS} style={{ marginTop: 28, padding: "14px 0", width: "100%", borderRadius: T.rs, cursor: uT.trim() && uC.trim() && uP && !uS ? "pointer" : "default", background: uS ? T.s2 : (uT.trim() && uC.trim() && uP ? T.s2 : T.s1), border: `1px solid ${uT.trim() && uC.trim() && uP ? T.bdH : T.bd}`, color: uS ? T.t1 : (uT.trim() && uC.trim() && uP ? T.t1 : T.t3), fontSize: 13, fontFamily: T.mono, fontWeight: 600, letterSpacing: 2.5, textTransform: "uppercase", transition: "all 0.25s ease", opacity: uS ? 0.7 : 1 }}>{uS ? "✓  Entry Saved" : "Save Entry"}</button>
-            </div>
-          )}
-
-          {/* Library */}
-          {view === "library" && (
-            <div style={fadeUp()}>
-              <input type="text" placeholder="Search entries..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: "100%", background: T.s1, border: `1px solid ${T.bd}`, borderRadius: T.r, color: T.t1, fontSize: 15, fontFamily: T.sans, padding: "12px 16px", marginBottom: 28, boxSizing: "border-box" }} />
-              {results !== null ? (
+              </button>
+              {showSettings && (
                 <>
-                  <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 16 }}>{results.length} result{results.length !== 1 ? "s" : ""}</div>
-                  {results.map((e, i) => <ERow key={e.id} entry={e} d={i * 40} a={anim} oc={() => goTo("entry", null, e)} />)}
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 16 }}>{entries.length} entries · {counts.filter(c => c.n > 0).length} pillars</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {counts.filter(c => c.n > 0).map(({ p, n }, i) => { const s = ps(p); return (
-                      <div key={p} onClick={() => goTo("category", p)} style={{ ...fadeUp(i * 50), background: s.bg, border: `1px solid ${s.accent}18`, borderRadius: T.r, padding: "22px 20px", cursor: "pointer", transition: "all 0.25s ease" }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor = s.accent + "45"} onMouseLeave={e => e.currentTarget.style.borderColor = s.accent + "18"}>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: T.t1, marginBottom: 4, lineHeight: 1.3 }}>{p}</div>
-                        <div style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: T.t2 }}>{n} {n === 1 ? "entry" : "entries"}</div>
-                      </div>
-                    ); })}
-                  </div>
-                  {counts.filter(c => c.n === 0).length > 0 && (
-                    <div style={{ marginTop: 20, marginBottom: 20 }}>
-                      <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 500, color: T.t3, letterSpacing: 3, textTransform: "uppercase", marginBottom: 10 }}>Empty</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{counts.filter(c => c.n === 0).map(({ p }) => <span key={p} style={{ fontSize: 12, fontFamily: T.mono, color: T.t3, padding: "4px 12px", border: `1px solid ${T.bd}`, borderRadius: 16 }}>{p}</span>)}</div>
+                  <div onClick={() => setShowSettings(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} />
+                  <div style={{
+                    position: "absolute", right: 0, top: 44, zIndex: 999,
+                    background: "linear-gradient(165deg, #1a2744, #162033)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 12, padding: "8px 0", minWidth: 200,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                  }}>
+                    <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{user.displayName || "User"}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{user.email}</div>
                     </div>
-                  )}
-                  <div style={{ marginTop: 36 }}>
-                    <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 16 }}>All Entries</div>
-                    {entries.map((e, i) => <ERow key={e.id} entry={e} d={250 + i * 20} a={anim} oc={() => goTo("entry", null, e)} />)}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Category */}
-          {view === "category" && selPillar && (
-            <div style={fadeUp()}>
-              <button onClick={() => goTo("library")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 24, fontSize: 13, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", color: T.t2 }}
-                onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t2}>← Back</button>
-              <h2 style={{ fontSize: 24, fontWeight: 600, color: T.t1, letterSpacing: -0.3, marginBottom: 4 }}>{selPillar}</h2>
-              <div style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 500, color: T.t2, marginBottom: 28 }}>{filtered.length} {filtered.length === 1 ? "entry" : "entries"}</div>
-              {filtered.map((entry, i) => { const s = ps(selPillar); return (
-                <div key={entry.id} onClick={() => goTo("entry", selPillar, entry)} style={{ ...fadeUp(i * 60), padding: "18px 20px", background: T.s1, border: `1px solid ${T.bd}`, borderRadius: T.r, marginBottom: 8, cursor: "pointer", transition: "all 0.25s ease" }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = s.accent + "35"; e.currentTarget.style.background = T.s2; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = T.bd; e.currentTarget.style.background = T.s1; }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: T.t1, marginBottom: 5, lineHeight: 1.4 }}>{entry.title}</div>
-                  <div style={{ fontSize: 14, color: T.t2, lineHeight: 1.55, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{entry.content}</div>
-                </div>
-              ); })}
-            </div>
-          )}
-
-          {/* Entry Detail */}
-          {view === "entry" && liveEntry && (
-            <div style={fadeUp()}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-                <button onClick={goBack} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", color: T.t2 }}
-                  onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t2}>← Back</button>
-                {!editing ? (
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: T.mono, fontWeight: 600, color: ps(liveEntry.pillar).accent, letterSpacing: 2, textTransform: "uppercase", padding: "5px 12px", background: ps(liveEntry.pillar).accent + "12", borderRadius: 4 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: ps(liveEntry.pillar).accent, display: "inline-block" }} />{liveEntry.pillar}
-                  </div>
-                ) : (
-                  <div style={{ position: "relative" }}>
-                    <button onClick={e => { e.stopPropagation(); setPillarDD(!pillarDD); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: T.mono, fontWeight: 600, color: ps(dP).accent, letterSpacing: 2, textTransform: "uppercase", padding: "5px 12px", background: ps(dP).accent + "12", borderRadius: 4, border: `1px solid ${ps(dP).accent}30`, cursor: "pointer" }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: ps(dP).accent, display: "inline-block" }} />{dP} <span style={{ fontSize: 9, marginLeft: 4, opacity: 0.6 }}>▼</span>
+                    <button onClick={() => { exportData(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#fff", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span>📦</span> Export Data
                     </button>
-                    {pillarDD && (
-                      <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100, background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.r, padding: "6px 0", minWidth: 220, boxShadow: "0 12px 40px rgba(0,0,0,0.5)" }}>
-                        {PILLARS.map(p => { const s = ps(p), a = dP === p; return <button key={p} onClick={() => { setDP(p); setPillarDD(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 16px", background: a ? s.accent + "10" : "transparent", border: "none", cursor: "pointer", textAlign: "left", color: a ? s.accent : T.t2, fontSize: 13, fontFamily: T.sans, fontWeight: 500 }}
-                          onMouseEnter={e => { if (!a) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }} onMouseLeave={e => { if (!a) e.currentTarget.style.background = "transparent"; }}>
-                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.accent }} />{p}
-                        </button>; })}
+                    <button onClick={() => { importRef.current?.click(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#fff", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span>📥</span> Import Data
+                    </button>
+                    {lastExported && (
+                      <div style={{ padding: "6px 16px", fontSize: 10, color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                        Last export: {new Date(lastExported).toLocaleDateString()}
                       </div>
                     )}
+                    <button onClick={() => { signOut(); setShowSettings(false); }} style={{
+                      width: "100%", padding: "10px 16px", background: "none", border: "none",
+                      color: "#ef4444", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                      cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
+                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                    }}>
+                      <span>🚪</span> Sign Out
+                    </button>
                   </div>
-                )}
-                {!editing ? (
-                  <button onClick={startEdit} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, textTransform: "uppercase", color: T.t3 }}
-                    onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t3}>Edit</button>
-                ) : (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <button onClick={cancelEdit} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, fontFamily: T.mono, fontWeight: 500, letterSpacing: 1, textTransform: "uppercase", color: T.t3 }}
-                      onMouseEnter={e => e.currentTarget.style.color = T.t1} onMouseLeave={e => e.currentTarget.style.color = T.t3}>Cancel</button>
-                    <button onClick={saveEdit} style={{ background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.rs, cursor: "pointer", padding: "5px 14px", fontSize: 12, fontFamily: T.mono, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", color: T.t1 }}>Save</button>
-                  </div>
-                )}
-              </div>
-              {!editing && (
-                <>
-                  <FullQuote entry={liveEntry} fadeKey={liveEntry.id} />
-                  <button onClick={() => del(liveEntry.id)} style={{ marginTop: 20, background: "transparent", border: `1px solid ${T.dngD}`, borderRadius: T.rs, color: "rgba(239,68,68,0.5)", cursor: "pointer", fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", padding: "8px 18px", transition: "all 0.2s ease" }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = T.dng + "60"; e.currentTarget.style.color = T.dng + "AA"; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = T.dngD; e.currentTarget.style.color = "rgba(239,68,68,0.5)"; }}>Delete Entry</button>
                 </>
               )}
-              {editing && (
-                <div style={{ marginTop: 4 }}>
-                  <input type="text" value={dT} onChange={e => setDT(e.target.value)} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${T.bdH}`, color: T.t1, fontSize: 24, fontWeight: 600, fontFamily: T.sans, padding: "10px 0", marginBottom: 28, lineHeight: 1.35 }} />
-                  <div style={{ marginBottom: 0 }}>
-                    <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: T.t3, marginBottom: 10 }}>Quote</div>
-                    <div style={{ borderLeft: `2px solid ${ps(dP).accent}30`, paddingLeft: 20 }}>
-                      <textarea value={dC} onChange={e => setDC(e.target.value)} rows={8} style={{ width: "100%", background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.r, color: T.t1, fontSize: 16, fontFamily: T.serif, padding: "18px 20px", lineHeight: 1.75, boxSizing: "border-box" }} />
-                    </div>
-                  </div>
-                  <div style={{ height: 1, background: T.bd, margin: "32px 0" }} />
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontFamily: T.mono, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: "rgba(234,235,240,0.55)", marginBottom: 10 }}>Notes</div>
-                    <textarea value={dN} onChange={e => setDN(e.target.value)} rows={4} placeholder="Your interpretation, how this applies to you, or why this matters."
-                      style={{ width: "100%", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, color: "rgba(234,235,240,0.72)", fontSize: 15, fontFamily: T.serif, padding: "16px 20px", lineHeight: 1.85, boxSizing: "border-box" }} />
-                  </div>
-                </div>
-              )}
+              <input ref={importRef} type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
             </div>
           )}
-          <div style={{ height: 80 }} />
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 40px" }}>
+
+        {/* Nav */}
+        <NavTabs active={activeTab} setActive={setActiveTab} />
+
+        {/* Lifetime Stats - only on overview */}
+        {activeTab === "overview" && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 12,
+          marginBottom: 28,
+        }}>
+          <StatCard label="Days" value={sessions.length} icon="📅" accent="#8ec5fc" />
+          <StatCard label="Vertical" value={totalVert.toLocaleString()} unit="m" icon="⬇" accent="#34d399" />
+          <StatCard label="Distance" value={totalDist.toFixed(1)} unit="km" icon="➡" accent="#a78bfa" />
+          <StatCard label="Runs" value={totalRuns} icon="🔄" accent="#f9a8d4" />
+          <StatCard label="Top Speed" value={topSpeed.toFixed(1)} unit="km/h" icon="⚡" accent="#fbbf24" />
+        </div>
+        )}
+
+        {/* Content */}
+        {activeTab === "overview" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+            <SeasonSummary sessions={sessions} />
+            <PersonalRecords sessions={sessions} />
+          </div>
+        )}
+
+        {activeTab === "sessions" && (
+          <div>
+            <SessionsHeader />
+            {sorted.map((s, i) => (
+              <SessionRow key={s.id} session={s} index={i} onEdit={setEditingSession} onDelete={setDeletingSession} />
+            ))}
+          </div>
+        )}
+
+        {activeTab === "records" && <PersonalRecords sessions={sessions} />}
+        {activeTab === "resorts" && <ResortBreakdown sessions={sessions} />}
+        {activeTab === "map" && <ResortMap sessions={sessions} />}
+      </div>
+
+      {showUpload && (
+        <UploadModal
+          onClose={() => setShowUpload(false)}
+          onSessionAdded={addSession}
+          sessions={sessions}
+        />
+      )}
+
+      {showClearConfirm && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000, padding: 24,
+        }} onClick={() => setShowClearConfirm(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "linear-gradient(165deg, #1a2744, #162033)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 16, padding: "28px 24px", maxWidth: 340, width: "100%",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+              Clear All Sessions?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 24, lineHeight: 1.5 }}>
+              This will permanently delete all {sessions.length} sessions. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowClearConfirm(false)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#fff",
+              }}>Cancel</button>
+              <button onClick={clearAllSessions} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                border: "none", color: "#fff",
+              }}>Clear All</button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Toast */}
-      {toast && <div style={{ position: "fixed", bottom: FOOTER_H + 20, left: "50%", transform: "translateX(-50%)", background: T.s2, border: `1px solid ${T.bdH}`, borderRadius: T.r, padding: "12px 24px", fontSize: 13, fontFamily: T.mono, fontWeight: 500, color: T.t1, boxShadow: "0 8px 30px rgba(0,0,0,0.4)", zIndex: 200, animation: "fadeIn 0.25s ease" }}>{toast}</div>}
+      {editingSession && (
+        <EditModal session={editingSession} onClose={() => setEditingSession(null)} onSave={updateSession} />
+      )}
+
+      {deletingSession && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000, padding: 24,
+        }} onClick={() => setDeletingSession(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "linear-gradient(165deg, #1a2744, #162033)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 16, padding: "28px 24px", maxWidth: 340, width: "100%",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🗑️</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+              Delete Session?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif", marginBottom: 24, lineHeight: 1.5 }}>
+              {deletingSession.resort} — {formatDate(deletingSession.date)}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDeletingSession(null)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.1)", color: "#fff",
+              }}>Cancel</button>
+              <button onClick={() => deleteSession(deletingSession)} style={{
+                flex: 1, padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif", background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                border: "none", color: "#fff",
+              }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Mount ──
-ReactDOM.createRoot(document.getElementById("root")).render(<Praxis />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<SkiTracker />);
   </script>
 </body>
 </html>
