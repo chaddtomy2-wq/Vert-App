@@ -20,6 +20,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div id="root"><div id="loading"><div class="title">⛷ VERT</div><div class="dots">Loading...</div></div></div>
@@ -1680,7 +1681,7 @@ function SkiTracker() {
   // Firebase init (singleton)
   const firebaseConfig = {
     apiKey: "AIzaSyAnAWxomsz8XmXu3pDVn5QETliyCuBmBwM",
-    authDomain: "vert-25c90.web.app",
+    authDomain: "vert-25c90.firebaseapp.com",
     projectId: "vert-25c90",
     storageBucket: "vert-25c90.firebasestorage.app",
     messagingSenderId: "614878832014",
@@ -1756,25 +1757,46 @@ function SkiTracker() {
     };
   }, [user]);
 
-  const signIn = async () => {
-    try {
-      const auth = getAuth();
-      const provider = new firebase.auth.GoogleAuthProvider();
-      await auth.signInWithPopup(provider);
-    } catch (err) {
-      // If popup blocked (common on mobile), try redirect
-      if (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user") {
+  const signIn = () => {
+    const GOOGLE_CLIENT_ID = "614878832014-01vorik4kp4k7kbagvqtnvpv06r8rtn0.apps.googleusercontent.com";
+    const client = google.accounts.oauth2.initCodeClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: "email profile",
+      ux_mode: "popup",
+      callback: async (response) => {
+        if (response.error) {
+          console.error("Google sign in error:", response);
+          return;
+        }
+        try {
+          // Exchange the authorization code for a Firebase credential
+          const auth = getAuth();
+          const credential = firebase.auth.GoogleAuthProvider.credential(null, response.access_token);
+          await auth.signInWithCredential(credential);
+        } catch (err) {
+          console.error("Firebase credential error:", err);
+        }
+      },
+    });
+    // Actually try initTokenClient instead (returns access_token directly)
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: "email profile",
+      callback: async (response) => {
+        if (response.error) {
+          console.error("Google sign in error:", response);
+          return;
+        }
         try {
           const auth = getAuth();
-          const provider = new firebase.auth.GoogleAuthProvider();
-          await auth.signInWithRedirect(provider);
-        } catch (err2) {
-          console.error("Redirect sign in error:", err2);
+          const credential = firebase.auth.GoogleAuthProvider.credential(null, response.access_token);
+          await auth.signInWithCredential(credential);
+        } catch (err) {
+          console.error("Firebase credential error:", err);
         }
-      } else {
-        console.error("Sign in error:", err);
-      }
-    }
+      },
+    });
+    tokenClient.requestAccessToken();
   };
 
   const signOut = async () => {
