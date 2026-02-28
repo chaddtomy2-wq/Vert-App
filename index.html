@@ -936,12 +936,27 @@ function UploadModal({ onClose, onSessionAdded, sessions }) {
     console.log("OCR text:", full);
 
     let date = null;
-    const dateMatch = full.match(/([A-Z][a-z]{2})\s+(\d{1,2}),?\s*(20\d{2})/i);
+    // Try "Mon DD, YYYY" or "Mon DD YYYY" or "Month DD, YYYY"
+    const dateMatch = full.match(/([A-Z][a-z]{2,8})\s+(\d{1,2}),?\s*(20\d{2})/i);
     if (dateMatch) {
-      const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+      const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+        january: "01", february: "02", march: "03", april: "04", june: "06", july: "07", august: "08", september: "09", october: "10", november: "11", december: "12" };
       const m = months[dateMatch[1].toLowerCase()];
       const d = dateMatch[2].padStart(2, "0");
       if (m) date = `${dateMatch[3]}-${m}-${d}`;
+    }
+    // Try "YYYY-MM-DD" format
+    if (!date) {
+      const isoMatch = full.match(/(20\d{2})-(\d{2})-(\d{2})/);
+      if (isoMatch) date = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+    // Try "DD/MM/YYYY" or "MM/DD/YYYY"
+    if (!date) {
+      const slashMatch = full.match(/(\d{1,2})\/(\d{1,2})\/(20\d{2})/);
+      if (slashMatch) {
+        // Assume MM/DD/YYYY
+        date = `${slashMatch[3]}-${slashMatch[1].padStart(2,"0")}-${slashMatch[2].padStart(2,"0")}`;
+      }
     }
 
     let resort = null;
@@ -1059,9 +1074,11 @@ function UploadModal({ onClose, onSessionAdded, sessions }) {
   const saveAll = () => {
     let saved = 0;
     results.forEach(r => {
-      if (r.status === "success" && r.data.date && r.data.resort) {
+      if (r.status === "success" && r.data.resort) {
         const session = { ...r.data, id: generateId() };
         if (session.topSpeed && session.topSpeed > 100) session.topSpeed = null;
+        // If date is missing, default to today so session still saves
+        if (!session.date) session.date = new Date().toISOString().slice(0, 10);
         onSessionAdded(session);
         saved++;
       }
